@@ -14,6 +14,7 @@ export {
   type AppSettings,
   type UpdateAppSettingsInput,
   type Task,
+  type TaskListItem,
   type CreateTaskInput,
   type UpdateTaskInput,
   type TaskComment,

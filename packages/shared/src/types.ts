@@ -157,6 +157,42 @@ export interface Task {
   updatedAt: string;
 }
 
+export interface TaskListItem {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  autoMode: boolean;
+  isFix: boolean;
+  status: TaskStatus;
+  priority: number;
+  position: number;
+  blockedReason: string | null;
+  blockedFromStatus: TaskStatus | null;
+  retryAfter: string | null;
+  retryCount: number;
+  tokenInput?: number;
+  tokenOutput?: number;
+  tokenTotal?: number;
+  costUsd?: number;
+  roadmapAlias: string | null;
+  tags: string[];
+  reworkRequested: boolean;
+  reviewIterationCount: number;
+  maxReviewIterations: number;
+  manualReviewRequired: boolean;
+  paused: boolean;
+  lastSyncedAt: string | null;
+  runtimeProfileId?: string | null;
+  modelOverride?: string | null;
+  runtimeLimitSnapshot?: RuntimeLimitSnapshot | null;
+  runtimeLimitUpdatedAt?: string | null;
+  scheduledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  hasPlan: boolean;
+}
+
 export interface TaskActiveRuntimeSelection {
   status: TaskStatus;
   profileMode: "task" | "plan" | "review";

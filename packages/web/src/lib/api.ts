@@ -1,5 +1,6 @@
 import type {
   Task,
+  TaskListItem,
   CreateTaskInput,
   UpdateTaskInput,
   TaskEvent,
@@ -252,6 +253,21 @@ async function request<T>(
   return res.json();
 }
 
+// Task list fetch. Overloaded: bare listTasks() returns full Task[] (legacy
+// dashboard path, until consumers migrate to GET /projects/overview);
+// listTasks(projectId) returns lightweight TaskListItem[] (board/list).
+function listTasks(): Promise<Task[]>;
+function listTasks(projectId: string): Promise<TaskListItem[]>;
+function listTasks(projectId?: string): Promise<Task[] | TaskListItem[]> {
+  if (projectId === undefined) {
+    console.debug("[api] GET /tasks (bare, legacy)");
+    return request<Task[]>(API_BASE);
+  }
+  const qs = `?projectId=${encodeURIComponent(projectId)}`;
+  console.debug("[api] GET /tasks?projectId=%s", projectId);
+  return request<TaskListItem[]>(`${API_BASE}${qs}`);
+}
+
 export const api = {
   getSettings(): Promise<SettingsResponse> {
     console.debug("[api] GET /settings");
@@ -351,11 +367,7 @@ export const api = {
   },
 
   // Tasks
-  listTasks(projectId?: string): Promise<Task[]> {
-    const qs = projectId ? `?projectId=${projectId}` : "";
-    console.debug("[api] GET /tasks%s", qs);
-    return request<Task[]>(`${API_BASE}${qs}`);
-  },
+  listTasks,
 
   getTask(id: string): Promise<Task> {
     console.debug("[api] GET /tasks/%s", id);
