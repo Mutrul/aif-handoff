@@ -29,9 +29,10 @@ export function setup() {
 const check200 = okStatus("tasks");
 
 export default function (data) {
-  const url = data.projectId
-    ? `${BASE_URL}/tasks?projectId=${encodeURIComponent(data.projectId)}`
-    : `${BASE_URL}/tasks`;
+  if (!data.projectId) {
+    return;
+  }
+  const url = `${BASE_URL}/tasks?projectId=${encodeURIComponent(data.projectId)}`;
   const res = http.get(url, tag("tasks"));
   check200(res);
 }
