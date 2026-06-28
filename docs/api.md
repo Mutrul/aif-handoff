@@ -578,12 +578,16 @@ The normalized `runtimeLimitSnapshot` object is shared across runtime-profile, t
 GET /tasks?projectId=<uuid>
 ```
 
-| Param       | Type         | Required | Description                                    |
-| ----------- | ------------ | -------- | ---------------------------------------------- |
-| `projectId` | query string | yes      | Project UUID. Bare `GET /tasks` returns `400`. |
+| Param       | Type         | Required | Description                                                                                                                                                                                                        |
+| ----------- | ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `projectId` | query string | optional | Project UUID. Scoped to a project returns lightweight `TaskListItem[]`. Omitting it returns the legacy full `Task[]` across all projects (retained until dashboard consumers migrate to `GET /projects/overview`). |
 
-**Response:** `200 OK` - array of lightweight `TaskListItem` objects sorted by
+**Response (scoped):** `200 OK` - array of lightweight `TaskListItem` objects sorted by
 status order, then position.
+
+**Response (bare, legacy):** `200 OK` - array of full `Task` objects across all
+projects. This path is transitional and will be removed once the dashboard
+moves to `GET /projects/overview`.
 
 ```json
 [
@@ -616,7 +620,6 @@ task detail payload.
 
 **Errors:**
 
-- `400` - missing `projectId`
 - `400` - invalid `projectId` format
 
 > Backlog ordering: ordinary task creation places new rows at the backlog tail,

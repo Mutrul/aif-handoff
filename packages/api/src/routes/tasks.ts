@@ -21,6 +21,7 @@ import { readAttachment } from "../services/attachmentStorage.js";
 import {
   findTaskById,
   listTaskListItems,
+  listTasks,
   createTask,
   updateTask,
   deleteTask,
@@ -166,13 +167,22 @@ tasksRouter.post(
   },
 );
 
-// GET /tasks?projectId=xxx - list by project, sorted by status order + position
+// GET /tasks — list tasks.
+//   • With projectId: lightweight TaskListItem[] (board/list rendering).
+//   • Without projectId: full Task[] for ALL projects (legacy dashboard path,
+//     retained until consumers migrate to GET /projects/overview — see cleanup PR).
+//     TODO(remove-bare-task-list): drop this branch once #141 lands.
 tasksRouter.get("/", (c) => {
   const projectId = c.req.query("projectId") || undefined;
+
+  // Legacy bare path: no projectId → return full Task[] across all projects.
+  // Kept alive for merge-safety until dashboard consumers migrate to /overview.
   if (!projectId) {
-    log.warn({ route: "GET /tasks" }, "Rejected task list request without projectId");
-    return c.json({ error: "projectId is required" }, 400);
+    const allTasks = listTasks();
+    log.debug({ count: allTasks.length, scope: "all" }, "Listed tasks (bare, legacy)");
+    return c.json(allTasks);
   }
+
   if (!/^[0-9a-f-]{36}$/i.test(projectId)) {
     log.warn(
       { route: "GET /tasks", projectId },

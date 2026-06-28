@@ -106,11 +106,18 @@ describe("tasks API", () => {
   });
 
   describe("GET /tasks", () => {
-    it("should return 400 when projectId is missing", async () => {
+    it("should return full Task[] across all projects when projectId is missing (legacy bare path)", async () => {
+      const db = testDb.current;
+      db.insert(tasks).values({ id: "1", projectId: TEST_PROJECT_UUID, title: "Task 1" }).run();
+      db.insert(tasks).values({ id: "2", projectId: OTHER_PROJECT_UUID, title: "Task 2" }).run();
+
+      // Legacy bare path retained until dashboard consumers migrate to /overview.
       const res = await app.request("/tasks");
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.error).toMatch(/projectId is required/);
+      expect(body).toHaveLength(2);
+      // Full Task[] shape (not lightweight): heavy fields are present.
+      expect(body[0]).toHaveProperty("plan");
     });
 
     it("should return lightweight tasks scoped to projectId", async () => {

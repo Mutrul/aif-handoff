@@ -4,25 +4,29 @@ Branch: `feat/optimize-task-list-load`
 Created: 2026-06-26
 Issue: https://github.com/lee-to/aif-handoff/issues/137
 
-> **PR split (2026-06-28, rev 2):** Per review feedback on the size threshold,
-> the task-list work is decomposed into three sequenced PRs:
+> **PR split (2026-06-28, rev 3 — reorder to replacement-before-victim):**
+> After multiple review rounds, the chain was reordered so every PR is
+> independently merge-safe (additive, no flag). This PR is now **additive**, not
+> backend-only:
 >
-> - **#138 (this PR, backend-only):** the lightweight `TaskListItem` contract
->   (`shared`), the `listTaskListItems` data query, the project-scoped
->   `GET /tasks` route (now requires `projectId`), task-list tests, and docs.
-> - **web integration (follow-up, branched off this PR):** `App.tsx`, hooks,
->   board/list components, cache invalidation, and web tests. Also fixes the
->   no-project overview loading path. **Note:** merging this PR alone means the
->   bare `GET /tasks` form returns `400` until the web follow-up lands; the only
->   HTTP consumer is the first-party web client, which always passes
->   `projectId`.
-> - **perf runner (#140):** Windows hardening for `run-perf.mjs` + scoped
->   `/tasks` k6 script. Orthogonal, lands independently.
+> - **#138 (this PR):** `TaskListItem` (shared) + `listTaskListItems()` (data) +
+>   scoped `GET /tasks?projectId` returns lite `TaskListItem[]` + Board migrates
+>   to TaskListItem (TS parity) + Board/TaskListItem parity test. **The bare
+>   `GET /tasks` (no projectId) path stays alive** returning full `Task[]` until
+>   dashboard consumers migrate to `/projects/overview` (cleanup PR). Merge-safe:
+>   nothing breaks — Board uses the new lite path, dashboard keeps the legacy bare
+>   path. No flag needed.
+> - **#139:** `GET /projects/overview` aggregate endpoint (additive). Replaces
+>   the bare `GET /tasks` for the dashboard once landed.
+> - **#141 (dashboard migration):** `App.tsx` + `ProjectsOverview` consume
+>   `/projects/overview`, drop bare-GET callers. Stacked on #138 + #139.
+> - **cleanup (chore/remove-bare-task-list):** removes the bare `GET /tasks`
+>   path once #141 has migrated its last consumer. Victim dies last.
+> - **#140 (perf runner):** Windows hardening + scoped k6. Orthogonal.
 >
-> **Concern B** (`GET /projects/overview` endpoint, `ProjectTaskOverview`
-> types, `ProjectsOverview` rewrite, docs) is in **#139**, stacked on the full
-> task-list chain. The `/projects/overview` docs mismatch (must-fix #1) is
-> fixed there.
+> The earlier "bare GET /tasks returns 400" design (rev 2) was merge-unsafe: it
+> killed the victim before its replacement existed. This additive model fixes
+> that — see the chain-summary comment on the PR for the full rationale.
 
 ## Settings
 
