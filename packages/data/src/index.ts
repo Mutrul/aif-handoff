@@ -20,6 +20,7 @@ import {
 import {
   AUTO_REVIEW_FINDING_SOURCES,
   AUTO_REVIEW_STRATEGIES,
+  TASK_STATUSES,
   buildRuntimeLimitSignature,
   appSettings,
   generatePlanPath,
@@ -58,6 +59,7 @@ import {
   type UpdateRuntimeProfileInput,
   type RuntimeWarmupSessionStatus,
   type Task,
+  type TaskListItem,
   type TaskStatus,
   resolveRuntimeLimitFutureHint,
   sanitizeRuntimeLimitSnapshotForExposure,
@@ -633,6 +635,92 @@ export function listTasks(projectId?: string): TaskRow[] {
       .all();
   }
   return db.select().from(tasks).orderBy(asc(tasks.status), asc(tasks.position)).all();
+}
+
+type TaskListItemRow = Pick<TaskRow,
+  | "id" | "projectId" | "title" | "description" | "status" | "priority" | "position"
+  | "autoMode" | "isFix" | "paused" | "roadmapAlias" | "tags"
+  | "runtimeProfileId" | "modelOverride"
+  | "blockedReason" | "blockedFromStatus" | "retryAfter" | "retryCount"
+  | "reworkRequested" | "reviewIterationCount" | "maxReviewIterations" | "manualReviewRequired"
+  | "runtimeLimitSnapshotJson" | "runtimeLimitUpdatedAt"
+  | "tokenInput" | "tokenOutput" | "tokenTotal" | "costUsd"
+  | "lastSyncedAt" | "scheduledAt" | "createdAt" | "updatedAt"
+> & { hasPlan: boolean | number };
+
+const TASK_LIST_COLUMNS = {
+  id: tasks.id,
+  projectId: tasks.projectId,
+  title: tasks.title,
+  description: tasks.description,
+  status: tasks.status,
+  priority: tasks.priority,
+  position: tasks.position,
+  autoMode: tasks.autoMode,
+  isFix: tasks.isFix,
+  paused: tasks.paused,
+  roadmapAlias: tasks.roadmapAlias,
+  tags: tasks.tags,
+  runtimeProfileId: tasks.runtimeProfileId,
+  modelOverride: tasks.modelOverride,
+  blockedReason: tasks.blockedReason,
+  blockedFromStatus: tasks.blockedFromStatus,
+  retryAfter: tasks.retryAfter,
+  retryCount: tasks.retryCount,
+  reworkRequested: tasks.reworkRequested,
+  reviewIterationCount: tasks.reviewIterationCount,
+  maxReviewIterations: tasks.maxReviewIterations,
+  manualReviewRequired: tasks.manualReviewRequired,
+  runtimeLimitSnapshotJson: tasks.runtimeLimitSnapshotJson,
+  runtimeLimitUpdatedAt: tasks.runtimeLimitUpdatedAt,
+  tokenInput: tasks.tokenInput,
+  tokenOutput: tasks.tokenOutput,
+  tokenTotal: tasks.tokenTotal,
+  costUsd: tasks.costUsd,
+  lastSyncedAt: tasks.lastSyncedAt,
+  scheduledAt: tasks.scheduledAt,
+  createdAt: tasks.createdAt,
+  updatedAt: tasks.updatedAt,
+  hasPlan: sql<number>`case when length(trim(coalesce(${tasks.plan}, ''))) > 0 then 1 else 0 end`,
+} as const;
+
+function toBooleanFlag(value: boolean | number): boolean {
+  return value === true || value === 1;
+}
+
+const TASK_STATUS_ORDER = new Map<TaskStatus, number>(
+  TASK_STATUSES.map((status, index) => [status, index]),
+);
+
+function compareTaskListRows(a: TaskListItemRow, b: TaskListItemRow): number {
+  const statusOrder =
+    (TASK_STATUS_ORDER.get(a.status) ?? TASK_STATUSES.length) -
+    (TASK_STATUS_ORDER.get(b.status) ?? TASK_STATUSES.length);
+  if (statusOrder !== 0) return statusOrder;
+  return a.position - b.position;
+}
+
+export function toTaskListItem(row: TaskListItemRow): TaskListItem {
+  const { tags, runtimeLimitSnapshotJson, hasPlan, ...rest } = row;
+  return {
+    ...rest,
+    tags: parseTags(tags),
+    runtimeLimitSnapshot: parseTaskRuntimeLimitSnapshot(runtimeLimitSnapshotJson, row.id),
+    hasPlan: toBooleanFlag(hasPlan),
+  };
+}
+
+export function listTaskListItems(projectId: string): TaskListItem[] {
+  const rows = getDb()
+    .select(TASK_LIST_COLUMNS)
+    .from(tasks)
+    .where(eq(tasks.projectId, projectId))
+    .orderBy(asc(tasks.position))
+    .all();
+
+  rows.sort(compareTaskListRows);
+  log.debug({ projectId, count: rows.length, projection: "task-list" }, "Listed task list items");
+  return rows.map(toTaskListItem);
 }
 
 export function getMinBacklogPosition(projectId: string): number | null {

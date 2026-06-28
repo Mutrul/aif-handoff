@@ -20,7 +20,7 @@ import {
 import { readAttachment } from "../services/attachmentStorage.js";
 import {
   findTaskById,
-  listTasks,
+  listTaskListItems,
   createTask,
   updateTask,
   deleteTask,
@@ -38,7 +38,6 @@ import {
   findProjectById,
   getAppDefaultRuntimeProfileId,
   resolveEffectiveRuntimeProfile,
-  resolveEffectiveRuntimeProfilesForTasks,
   updateTaskPositionOnly,
   tryStartQaRun,
   type TaskRow,
@@ -167,29 +166,24 @@ tasksRouter.post(
   },
 );
 
-// GET /tasks?projectId=xxx — list by project, sorted by status order + position
+// GET /tasks?projectId=xxx - list by project, sorted by status order + position
 tasksRouter.get("/", (c) => {
   const projectId = c.req.query("projectId") || undefined;
-  if (projectId && !/^[0-9a-f-]{36}$/i.test(projectId)) {
+  if (!projectId) {
+    log.warn({ route: "GET /tasks" }, "Rejected task list request without projectId");
+    return c.json({ error: "projectId is required" }, 400);
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(projectId)) {
+    log.warn(
+      { route: "GET /tasks", projectId },
+      "Rejected task list request with invalid projectId",
+    );
     return c.json({ error: "Invalid projectId format" }, 400);
   }
 
-  const allTasks = listTasks(projectId);
-  const systemDefaultRuntimeProfileId = getAppDefaultRuntimeProfileId("task");
-  const effectiveRuntimeByTaskId = resolveEffectiveRuntimeProfilesForTasks(allTasks, {
-    mode: "task",
-    systemDefaultRuntimeProfileId,
-  });
-  log.debug({ count: allTasks.length, projectId }, "Listed tasks");
-  return c.json(
-    allTasks.map((task) =>
-      toTaskRouteResponse(
-        task,
-        systemDefaultRuntimeProfileId,
-        effectiveRuntimeByTaskId.get(task.id),
-      ),
-    ),
-  );
+  const taskList = listTaskListItems(projectId);
+  log.debug({ count: taskList.length, projectId, responseType: "TaskListItem" }, "Listed tasks");
+  return c.json(taskList);
 });
 
 // POST /tasks — create

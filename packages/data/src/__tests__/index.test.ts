@@ -28,6 +28,7 @@ const {
   deleteTask,
   findTaskById,
   listTasks,
+  listTaskListItems,
   toTaskResponse,
   toCommentResponse,
   listTaskComments,
@@ -183,6 +184,72 @@ describe("data layer", () => {
       createTask({ projectId: "proj-2", title: "B", description: "D" });
       expect(listTasks("proj-1")).toHaveLength(1);
       expect(listTasks("proj-2")).toHaveLength(1);
+    });
+  });
+
+  describe("listTaskListItems", () => {
+    it("returns lightweight task list items scoped to a project", () => {
+      seedProject("proj-2");
+      const withPlan = createTask({
+        projectId: "proj-1",
+        title: "A",
+        description: "Board description",
+        priority: 2,
+        tags: ["roadmap"],
+        roadmapAlias: "v1",
+      })!;
+      setTaskFields(withPlan.id, {
+        plan: "## Plan",
+        implementationLog: "heavy implementation log",
+        reviewComments: "heavy review comments",
+        agentActivityLog: "heavy activity log",
+      });
+      updateTask(withPlan.id, {
+        tokenInput: 10,
+        tokenOutput: 20,
+        tokenTotal: 30,
+        costUsd: 0.12,
+      });
+      createTask({ projectId: "proj-2", title: "B", description: "Other project" });
+
+      const result = listTaskListItems("proj-1");
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({
+        id: withPlan.id,
+        projectId: "proj-1",
+        title: "A",
+        description: "Board description",
+        hasPlan: true,
+        tokenInput: 10,
+        tokenOutput: 20,
+        tokenTotal: 30,
+        costUsd: 0.12,
+        tags: ["roadmap"],
+        roadmapAlias: "v1",
+      });
+      expect(result[0]).not.toHaveProperty("plan");
+      expect(result[0]).not.toHaveProperty("implementationLog");
+      expect(result[0]).not.toHaveProperty("reviewComments");
+      expect(result[0]).not.toHaveProperty("agentActivityLog");
+      expect(result[0]).not.toHaveProperty("attachments");
+      expect(result[0]).not.toHaveProperty("runtimeOptions");
+    });
+
+    it("sorts by kanban status order before position", () => {
+      const planning = createTask({ projectId: "proj-1", title: "Planning", description: "" })!;
+      const blocked = createTask({ projectId: "proj-1", title: "Blocked", description: "" })!;
+      const backlog = createTask({ projectId: "proj-1", title: "Backlog", description: "" })!;
+
+      updateTaskStatus(planning.id, "planning");
+      updateTaskStatus(blocked.id, "blocked_external", {
+        blockedFromStatus: "planning",
+        blockedReason: "rate limit",
+      });
+
+      const result = listTaskListItems("proj-1");
+
+      expect(result.map((task) => task.id)).toEqual([backlog.id, planning.id, blocked.id]);
     });
   });
 

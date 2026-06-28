@@ -329,6 +329,21 @@ Agent tool events are tracked in each task's `agentActivityLog` field. Two modes
 - **sync** (default): Each event writes immediately to the database.
 - **batch**: Events are buffered in an in-memory queue per task and flushed when the batch size, max age timer, or stage boundary is reached. Shutdown handlers ensure buffered entries are persisted on `SIGINT`/`SIGTERM`.
 
+## Task Read Models
+
+The API separates task list reads from task detail reads to keep project board
+loads bounded:
+
+- `GET /tasks?projectId=<uuid>` requires a project id and returns lightweight
+  `TaskListItem` rows from `listTaskListItems(projectId)`.
+- `TaskListItem` includes board, list, filtering, command-palette, runtime-limit,
+  and metric fields plus the derived `hasPlan` flag.
+- `TaskListItem` intentionally excludes heavy detail-only fields: attachments,
+  plan text, implementation log, review comments, agent activity log, runtime
+  options, auto-review state, and QA markdown artifacts.
+- `GET /tasks/:id` remains the full task detail endpoint for task detail, chat,
+  comments, and agent workflows.
+
 ## Database
 
 SQLite via `better-sqlite3` with `drizzle-orm` for type-safe queries. Schema is defined in `packages/shared/src/schema.ts`, and all DB reads/writes are executed through `packages/data/src/index.ts`.

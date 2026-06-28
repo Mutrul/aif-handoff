@@ -578,14 +578,50 @@ The normalized `runtimeLimitSnapshot` object is shared across runtime-profile, t
 GET /tasks?projectId=<uuid>
 ```
 
-| Param       | Type         | Required | Description                               |
-| ----------- | ------------ | -------- | ----------------------------------------- |
-| `projectId` | query string | no       | Filter by project. Omit to list all tasks |
+| Param       | Type         | Required | Description                                    |
+| ----------- | ------------ | -------- | ---------------------------------------------- |
+| `projectId` | query string | yes      | Project UUID. Bare `GET /tasks` returns `400`. |
 
-**Response:** `200 OK` — array of task objects sorted by status order, then position.
-For backlog tasks, ordinary creation now places new rows at the backlog tail,
-so API consumers see default-created backlog tasks in creation order unless a
-caller supplies an explicit `position`.
+**Response:** `200 OK` - array of lightweight `TaskListItem` objects sorted by
+status order, then position.
+
+```json
+[
+  {
+    "id": "uuid",
+    "projectId": "uuid",
+    "title": "Task title",
+    "description": "Short board text",
+    "status": "backlog",
+    "priority": 0,
+    "position": 1100,
+    "autoMode": true,
+    "isFix": false,
+    "paused": false,
+    "hasPlan": false,
+    "tokenInput": 0,
+    "tokenOutput": 0,
+    "tokenTotal": 0,
+    "costUsd": 0,
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
+]
+```
+
+The list contract excludes detail-only fields such as `attachments`, `plan`,
+`implementationLog`, `reviewComments`, `agentActivityLog`, `runtimeOptions`,
+`autoReviewState`, and QA markdown artifacts. Use `GET /tasks/:id` for the full
+task detail payload.
+
+**Errors:**
+
+- `400` - missing `projectId`
+- `400` - invalid `projectId` format
+
+> Backlog ordering: ordinary task creation places new rows at the backlog tail,
+> so API consumers see default-created backlog tasks in creation order unless a
+> caller supplies an explicit `position`.
 
 ### Create Task
 
@@ -636,6 +672,10 @@ GET /tasks/:id
 ```
 
 **Response:** `200 OK` — full task object.
+
+This is the full detail endpoint. It includes heavy task fields such as
+attachments, plan, implementation log, review comments, agent activity log,
+runtime options, auto-review state, and QA detail text when present.
 
 Notable task fields in the response:
 

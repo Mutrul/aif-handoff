@@ -62,6 +62,7 @@ export {
   type AppSettings,
   type UpdateAppSettingsInput,
   type Task,
+  type TaskListItem,
   type TaskActiveRuntimeSelection,
   type CreateTaskInput,
   type UpdateTaskInput,
