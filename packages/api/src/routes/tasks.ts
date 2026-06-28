@@ -39,6 +39,7 @@ import {
   findProjectById,
   getAppDefaultRuntimeProfileId,
   resolveEffectiveRuntimeProfile,
+  resolveEffectiveRuntimeProfilesForTasks,
   updateTaskPositionOnly,
   tryStartQaRun,
   type TaskRow,
@@ -171,6 +172,9 @@ tasksRouter.post(
 //   • With projectId: lightweight TaskListItem[] (board/list rendering).
 //   • Without projectId: full Task[] for ALL projects (legacy dashboard path,
 //     retained until consumers migrate to GET /projects/overview — see cleanup PR).
+//     The bare path maps rows through toTaskRouteResponse (same as GET /tasks/:id)
+//     so the legacy response shape — parsed attachments/tags/runtimeOptions,
+//     effectiveRuntime, normalized runtimeLimitSnapshot — is preserved exactly.
 //     TODO(remove-bare-task-list): drop this branch once #141 lands.
 tasksRouter.get("/", (c) => {
   const projectId = c.req.query("projectId") || undefined;
@@ -179,8 +183,21 @@ tasksRouter.get("/", (c) => {
   // Kept alive for merge-safety until dashboard consumers migrate to /overview.
   if (!projectId) {
     const allTasks = listTasks();
+    const systemDefaultRuntimeProfileId = getAppDefaultRuntimeProfileId("task");
+    const effectiveRuntimeByTaskId = resolveEffectiveRuntimeProfilesForTasks(allTasks, {
+      mode: "task",
+      systemDefaultRuntimeProfileId,
+    });
     log.debug({ count: allTasks.length, scope: "all" }, "Listed tasks (bare, legacy)");
-    return c.json(allTasks);
+    return c.json(
+      allTasks.map((task) =>
+        toTaskRouteResponse(
+          task,
+          systemDefaultRuntimeProfileId,
+          effectiveRuntimeByTaskId.get(task.id),
+        ),
+      ),
+    );
   }
 
   if (!/^[0-9a-f-]{36}$/i.test(projectId)) {

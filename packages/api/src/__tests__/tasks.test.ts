@@ -106,9 +106,17 @@ describe("tasks API", () => {
   });
 
   describe("GET /tasks", () => {
-    it("should return full Task[] across all projects when projectId is missing (legacy bare path)", async () => {
+    it("should return mapped full Task[] across all projects when projectId is missing (legacy bare path)", async () => {
       const db = testDb.current;
-      db.insert(tasks).values({ id: "1", projectId: TEST_PROJECT_UUID, title: "Task 1" }).run();
+      db.insert(tasks)
+        .values({
+          id: "1",
+          projectId: TEST_PROJECT_UUID,
+          title: "Task 1",
+          tags: '["alpha","beta"]',
+          runtimeOptionsJson: '{"model":"x"}',
+        })
+        .run();
       db.insert(tasks).values({ id: "2", projectId: OTHER_PROJECT_UUID, title: "Task 2" }).run();
 
       // Legacy bare path retained until dashboard consumers migrate to /overview.
@@ -116,8 +124,14 @@ describe("tasks API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body).toHaveLength(2);
-      // Full Task[] shape (not lightweight): heavy fields are present.
+      // Full mapped Task[] shape (not raw TaskRow, not lightweight TaskListItem):
+      // tags parsed into an array, runtimeOptions parsed, raw JSON columns absent.
       expect(body[0]).toHaveProperty("plan");
+      expect(body[0].tags).toEqual(["alpha", "beta"]);
+      expect(body[0]).toHaveProperty("runtimeOptions");
+      expect(body[0].runtimeOptions).toEqual({ model: "x" });
+      expect(body[0]).not.toHaveProperty("runtimeOptionsJson");
+      expect(body[0]).not.toHaveProperty("tagsJson");
     });
 
     it("should return lightweight tasks scoped to projectId", async () => {

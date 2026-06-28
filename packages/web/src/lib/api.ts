@@ -261,7 +261,7 @@ function listTasks(projectId: string): Promise<TaskListItem[]>;
 function listTasks(projectId?: string): Promise<Task[] | TaskListItem[]> {
   if (projectId === undefined) {
     console.debug("[api] GET /tasks (bare, legacy)");
-    return request<Task[]>(`${API_BASE}/tasks`);
+    return request<Task[]>(API_BASE);
   }
   const qs = `?projectId=${encodeURIComponent(projectId)}`;
   console.debug("[api] GET /tasks?projectId=%s", projectId);
