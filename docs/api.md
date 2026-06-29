@@ -139,6 +139,64 @@ GET /projects
 ]
 ```
 
+### Project Task Overview
+
+```
+GET /projects/overview
+```
+
+Returns compact per-project task aggregates for the projects overview screen.
+This endpoint does not return full task rows.
+
+**Response:** `200 OK`
+
+```json
+[
+  {
+    "projectId": "uuid",
+    "totalTasks": 12,
+    "completedTasks": 2,
+    "verifiedTasks": 0,
+    "backlogTasks": 4,
+    "activeTasks": 6,
+    "blockedTasks": 1,
+    "autoModeTasks": 3,
+    "fixTasks": 1,
+    "totalRetries": 3,
+    "totalTokenInput": 1200,
+    "totalTokenOutput": 800,
+    "totalTokenTotal": 2000,
+    "totalCostUsd": 0.25,
+    "statusCounts": {
+      "backlog": 4,
+      "planning": 1,
+      "plan_ready": 2,
+      "implementing": 1,
+      "review": 1,
+      "blocked_external": 1,
+      "done": 2,
+      "verified": 0
+    },
+    "statusPreviews": {
+      "backlog": [{ "id": "task-1", "title": "Queued work" }],
+      "planning": [],
+      "plan_ready": [],
+      "implementing": [],
+      "review": [],
+      "blocked_external": [],
+      "done": [],
+      "verified": []
+    }
+  }
+]
+```
+
+`completedTasks` counts `done` + `verified`. `activeTasks` counts every status
+that is not `backlog`, `done`, or `verified`. `blockedTasks` counts
+`blocked_external`. `statusPreviews` lists are small (bounded in SQL) and
+include only task id/title pairs — never plan text, logs, or other detail-only
+fields.
+
 ### Create Project
 
 ```

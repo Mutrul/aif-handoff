@@ -61,6 +61,7 @@ import {
   type Task,
   type TaskListItem,
   type TaskStatus,
+  type ProjectTaskOverview,
   resolveRuntimeLimitFutureHint,
   sanitizeRuntimeLimitSnapshotForExposure,
   selectViolatedWindowForExactThreshold,
@@ -1295,6 +1296,153 @@ export function getAppDefaultRuntimeProfileId(
 
 export function listProjects(): ProjectRow[] {
   return getDb().select().from(projects).all();
+}
+
+function emptyStatusCounts(): Record<TaskStatus, number> {
+  const counts = {} as Record<TaskStatus, number>;
+  for (const status of TASK_STATUSES) {
+    counts[status] = 0;
+  }
+  return counts;
+}
+
+function emptyStatusPreviews(): ProjectTaskOverview["statusPreviews"] {
+  const previews = {} as ProjectTaskOverview["statusPreviews"];
+  for (const status of TASK_STATUSES) {
+    previews[status] = [];
+  }
+  return previews;
+}
+
+function emptyProjectTaskOverview(projectId: string): ProjectTaskOverview {
+  return {
+    projectId,
+    totalTasks: 0,
+    completedTasks: 0,
+    verifiedTasks: 0,
+    backlogTasks: 0,
+    activeTasks: 0,
+    blockedTasks: 0,
+    autoModeTasks: 0,
+    fixTasks: 0,
+    totalRetries: 0,
+    totalTokenInput: 0,
+    totalTokenOutput: 0,
+    totalTokenTotal: 0,
+    totalCostUsd: 0,
+    statusCounts: emptyStatusCounts(),
+    statusPreviews: emptyStatusPreviews(),
+  };
+}
+
+function toFiniteNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+type ProjectTaskPreviewQueryRow = {
+  id: string;
+  projectId: string;
+  title: string;
+  status: TaskStatus;
+};
+
+export function listProjectTaskOverviews(previewLimit = 3): ProjectTaskOverview[] {
+  const db = getDb();
+  const normalizedPreviewLimit = Number.isFinite(previewLimit)
+    ? Math.max(0, Math.trunc(previewLimit))
+    : 0;
+  const projectRows = listProjects();
+  const overviewByProjectId = new Map(
+    projectRows.map((project) => [project.id, emptyProjectTaskOverview(project.id)]),
+  );
+
+  const aggregateRows = db
+    .select({
+      projectId: tasks.projectId,
+      status: tasks.status,
+      taskCount: count(),
+      autoModeTasks: sql<number>`coalesce(sum(case when ${tasks.autoMode} = 1 then 1 else 0 end), 0)`,
+      fixTasks: sql<number>`coalesce(sum(case when ${tasks.isFix} = 1 then 1 else 0 end), 0)`,
+      totalRetries: sql<number>`coalesce(sum(${tasks.retryCount}), 0)`,
+      totalTokenInput: sql<number>`coalesce(sum(${tasks.tokenInput}), 0)`,
+      totalTokenOutput: sql<number>`coalesce(sum(${tasks.tokenOutput}), 0)`,
+      totalTokenTotal: sql<number>`coalesce(sum(${tasks.tokenTotal}), 0)`,
+      totalCostUsd: sql<number>`coalesce(sum(${tasks.costUsd}), 0)`,
+    })
+    .from(tasks)
+    .groupBy(tasks.projectId, tasks.status)
+    .all();
+
+  for (const row of aggregateRows) {
+    const overview = overviewByProjectId.get(row.projectId);
+    if (!overview) continue;
+
+    const taskCount = toFiniteNumber(row.taskCount);
+    const status = row.status;
+    overview.totalTasks += taskCount;
+    overview.statusCounts[status] = taskCount;
+    overview.autoModeTasks += toFiniteNumber(row.autoModeTasks);
+    overview.fixTasks += toFiniteNumber(row.fixTasks);
+    overview.totalRetries += toFiniteNumber(row.totalRetries);
+    overview.totalTokenInput += toFiniteNumber(row.totalTokenInput);
+    overview.totalTokenOutput += toFiniteNumber(row.totalTokenOutput);
+    overview.totalTokenTotal += toFiniteNumber(row.totalTokenTotal);
+    overview.totalCostUsd += toFiniteNumber(row.totalCostUsd);
+
+    if (status === "done" || status === "verified") {
+      overview.completedTasks += taskCount;
+    }
+    if (status === "verified") {
+      overview.verifiedTasks += taskCount;
+    }
+    if (status === "backlog") {
+      overview.backlogTasks += taskCount;
+    }
+    if (status === "blocked_external") {
+      overview.blockedTasks += taskCount;
+    }
+    if (status !== "backlog" && status !== "done" && status !== "verified") {
+      overview.activeTasks += taskCount;
+    }
+  }
+
+  if (normalizedPreviewLimit > 0) {
+    const previewRows = db.all<ProjectTaskPreviewQueryRow>(sql`
+      select
+        id,
+        project_id as "projectId",
+        title,
+        status
+      from (
+        select
+          ${tasks.id} as id,
+          ${tasks.projectId} as project_id,
+          ${tasks.title} as title,
+          ${tasks.status} as status,
+          row_number() over (
+            partition by ${tasks.projectId}, ${tasks.status}
+            order by ${tasks.position} asc, ${tasks.id} asc
+          ) as preview_rank
+        from ${tasks}
+      )
+      where preview_rank <= ${normalizedPreviewLimit}
+      order by project_id asc, status asc, preview_rank asc
+    `);
+
+    for (const row of previewRows) {
+      const overview = overviewByProjectId.get(row.projectId);
+      if (!overview) continue;
+
+      const previews = overview.statusPreviews[row.status];
+      previews.push({ id: row.id, title: row.title });
+    }
+  }
+
+  log.debug(
+    { projectCount: projectRows.length, projection: "project-task-overview" },
+    "Listed project task overviews",
+  );
+  return projectRows.map((project) => overviewByProjectId.get(project.id)!);
 }
 
 export function findProjectById(id: string): ProjectRow | undefined {
