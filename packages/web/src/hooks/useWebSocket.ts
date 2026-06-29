@@ -227,6 +227,8 @@ export function useWebSocket() {
           pendingTaskIds.current.add(data.payload.taskId);
           queryClient.invalidateQueries({ queryKey: ["tasks"] });
         }
+        // Overview aggregates token/cost fields, so refresh after usage updates.
+        invalidateProjectTaskOverviews(queryClient);
         return;
       }
 
