@@ -27,6 +27,7 @@ import { getAutoQueueMode, setAutoQueueMode } from "@aif/data";
 import { broadcast } from "../ws.js";
 import {
   listProjects,
+  listProjectTaskOverviews,
   findProjectById,
   createProject,
   updateProject,
@@ -192,6 +193,16 @@ projectsRouter.get("/", (c) => {
   const all = listProjects();
   log.debug({ count: all.length }, "Listed all projects");
   return c.json(all);
+});
+
+// GET /projects/overview - compact task metrics and previews for the overview screen
+projectsRouter.get("/overview", (c) => {
+  const overview = listProjectTaskOverviews();
+  log.debug(
+    { projectCount: overview.length, responseType: "ProjectTaskOverview" },
+    "Listed project task overview",
+  );
+  return c.json(overview);
 });
 
 // POST /projects

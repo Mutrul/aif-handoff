@@ -131,6 +131,71 @@ describe("projects API", () => {
     expect(await res.json()).toEqual([]);
   });
 
+  it("returns compact project task overviews", async () => {
+    const db = testDb.current;
+    db.insert(projects)
+      .values([
+        { id: "overview-a", name: "Overview A", rootPath: "/tmp/a" },
+        { id: "overview-b", name: "Overview B", rootPath: "/tmp/b" },
+      ])
+      .run();
+    db.insert(tasks)
+      .values([
+        {
+          id: "task-a-1",
+          projectId: "overview-a",
+          title: "Backlog item",
+          status: "backlog",
+          plan: "heavy plan",
+          implementationLog: "heavy implementation log",
+          reviewComments: "heavy review comments",
+          agentActivityLog: "heavy activity log",
+          tokenInput: 10,
+          tokenOutput: 20,
+          tokenTotal: 30,
+          costUsd: 0.25,
+        },
+        {
+          id: "task-a-2",
+          projectId: "overview-a",
+          title: "Done item",
+          status: "done",
+          retryCount: 2,
+        },
+        {
+          id: "task-b-1",
+          projectId: "overview-b",
+          title: "Other item",
+          status: "review",
+        },
+      ])
+      .run();
+
+    const res = await app.request("/projects/overview");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const overviewA = body.find(
+      (overview: { projectId: string }) => overview.projectId === "overview-a",
+    );
+
+    expect(overviewA).toMatchObject({
+      projectId: "overview-a",
+      totalTasks: 2,
+      completedTasks: 1,
+      backlogTasks: 1,
+      totalRetries: 2,
+      totalTokenInput: 10,
+      totalTokenOutput: 20,
+      totalTokenTotal: 30,
+      totalCostUsd: 0.25,
+    });
+    expect(overviewA.statusCounts.backlog).toBe(1);
+    expect(overviewA.statusCounts.done).toBe(1);
+    expect(overviewA.statusPreviews.backlog).toEqual([{ id: "task-a-1", title: "Backlog item" }]);
+    expect(overviewA.statusPreviews.backlog[0]).not.toHaveProperty("plan");
+    expect(overviewA.statusPreviews.backlog[0]).not.toHaveProperty("implementationLog");
+  });
+
   it("rejects invalid root path for create", async () => {
     const res = await app.request("/projects", {
       method: "POST",

@@ -37,6 +37,7 @@ const {
   getLatestHumanComment,
   getLatestReworkComment,
   listProjects,
+  listProjectTaskOverviews,
   findProjectById,
   createProject,
   updateProject,
@@ -250,6 +251,68 @@ describe("data layer", () => {
       const result = listTaskListItems("proj-1");
 
       expect(result.map((task) => task.id)).toEqual([backlog.id, planning.id, blocked.id]);
+    });
+  });
+
+  describe("listProjectTaskOverviews", () => {
+    it("returns compact per-project aggregates and limited previews", () => {
+      seedProject("proj-2");
+      createTask({
+        projectId: "proj-1",
+        title: "Backlog A",
+        description: "D",
+        isFix: true,
+        tags: ["x"],
+      });
+      const firstBacklog = createTask({
+        projectId: "proj-1",
+        title: "Backlog first by position",
+        description: "D",
+        position: 10,
+      })!;
+      const backlog = listTasks("proj-1").find((task) => task.title === "Backlog A")!;
+      updateTask(backlog.id, {
+        tokenInput: 5,
+        tokenOutput: 6,
+        tokenTotal: 11,
+      });
+      const done = createTask({
+        projectId: "proj-1",
+        title: "Done B",
+        description: "D",
+        autoMode: false,
+      })!;
+      updateTaskStatus(done.id, "done", {
+        retryCount: 2,
+      });
+      updateTask(done.id, {
+        tokenInput: 10,
+        tokenOutput: 15,
+        tokenTotal: 25,
+        costUsd: 0.5,
+      });
+      createTask({ projectId: "proj-2", title: "Other project", description: "D" });
+
+      const overviews = listProjectTaskOverviews(1);
+      const proj1 = overviews.find((overview) => overview.projectId === "proj-1")!;
+      const proj2 = overviews.find((overview) => overview.projectId === "proj-2")!;
+
+      expect(proj1.totalTasks).toBe(3);
+      expect(proj1.completedTasks).toBe(1);
+      expect(proj1.backlogTasks).toBe(2);
+      expect(proj1.fixTasks).toBe(1);
+      expect(proj1.totalRetries).toBe(2);
+      expect(proj1.totalTokenInput).toBe(15);
+      expect(proj1.totalTokenOutput).toBe(21);
+      expect(proj1.totalTokenTotal).toBe(36);
+      expect(proj1.totalCostUsd).toBe(0.5);
+      expect(proj1.statusCounts.backlog).toBe(2);
+      expect(proj1.statusCounts.done).toBe(1);
+      expect(proj1.statusPreviews.backlog).toEqual([
+        { id: firstBacklog.id, title: "Backlog first by position" },
+      ]);
+      expect(proj1.statusPreviews.done).toEqual([{ id: done.id, title: "Done B" }]);
+      expect(proj2.totalTasks).toBe(1);
     });
   });
 

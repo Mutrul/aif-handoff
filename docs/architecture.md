@@ -343,6 +343,9 @@ loads bounded:
   options, auto-review state, and QA markdown artifacts.
 - `GET /tasks/:id` remains the full task detail endpoint for task detail, chat,
   comments, and agent workflows.
+- `GET /projects/overview` uses `listProjectTaskOverviews()` to serve compact
+  per-project counts, metric totals, and small title previews without loading
+  every task row into the web client.
 
 ## Database
 

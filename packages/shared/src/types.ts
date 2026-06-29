@@ -193,6 +193,30 @@ export interface TaskListItem {
   hasPlan: boolean;
 }
 
+export interface ProjectTaskPreview {
+  id: string;
+  title: string;
+}
+
+export interface ProjectTaskOverview {
+  projectId: string;
+  totalTasks: number;
+  completedTasks: number;
+  verifiedTasks: number;
+  backlogTasks: number;
+  activeTasks: number;
+  blockedTasks: number;
+  autoModeTasks: number;
+  fixTasks: number;
+  totalRetries: number;
+  totalTokenInput: number;
+  totalTokenOutput: number;
+  totalTokenTotal: number;
+  totalCostUsd: number;
+  statusCounts: Record<TaskStatus, number>;
+  statusPreviews: Record<TaskStatus, ProjectTaskPreview[]>;
+}
+
 export interface TaskActiveRuntimeSelection {
   status: TaskStatus;
   profileMode: "task" | "plan" | "review";
