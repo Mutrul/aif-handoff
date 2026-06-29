@@ -8,6 +8,7 @@ import type {
   TaskComment,
   CreateTaskCommentInput,
   Project,
+  ProjectTaskOverview,
   CreateProjectInput,
   ChatRequest,
   ChatSession,
@@ -261,7 +262,7 @@ function listTasks(projectId: string): Promise<TaskListItem[]>;
 function listTasks(projectId?: string): Promise<Task[] | TaskListItem[]> {
   if (projectId === undefined) {
     console.debug("[api] GET /tasks (bare, legacy)");
-    return request<Task[]>(API_BASE);
+    return request<Task[]>(`${API_BASE}/tasks`);
   }
   const qs = `?projectId=${encodeURIComponent(projectId)}`;
   console.debug("[api] GET /tasks?projectId=%s", projectId);
@@ -296,6 +297,11 @@ export const api = {
   listProjects(): Promise<Project[]> {
     console.debug("[api] GET /projects");
     return request<Project[]>("/projects");
+  },
+
+  listProjectTaskOverviews(): Promise<ProjectTaskOverview[]> {
+    console.debug("[api] GET /projects/overview");
+    return request<ProjectTaskOverview[]>("/projects/overview");
   },
 
   createProject(input: CreateProjectInput): Promise<Project> {
