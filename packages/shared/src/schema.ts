@@ -66,6 +66,8 @@ export const tasks = sqliteTable("tasks", {
   planTests: integer("plan_tests", { mode: "boolean" }).notNull().default(false),
   skipReview: integer("skip_review", { mode: "boolean" }).notNull().default(false),
   useSubagents: integer("use_subagents", { mode: "boolean" }).notNull().default(false),
+  runPlanImprove: integer("run_plan_improve", { mode: "boolean" }).notNull().default(false),
+  runPostVerify: integer("run_post_verify", { mode: "boolean" }).notNull().default(false),
   autoQa: integer("auto_qa", { mode: "boolean" }).notNull().default(false),
   qaChangeSummary: text("qa_change_summary"),
   qaTestPlan: text("qa_test_plan"),

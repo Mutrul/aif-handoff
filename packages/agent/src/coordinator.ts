@@ -26,9 +26,11 @@ import {
 import { initProject, type RuntimeRegistry } from "@aif/runtime";
 import { logger, getEnv, CLEAN_STATE_RESET, withTimeout, type TaskStatus } from "@aif/shared";
 import { runPlanner } from "./subagents/planner.js";
+import { runImprover } from "./subagents/improver.js";
 import { runPlanChecker } from "./subagents/planChecker.js";
 import { runImplementer } from "./subagents/implementer.js";
 import { runReviewer } from "./subagents/reviewer.js";
+import { runVerifier } from "./subagents/verifier.js";
 import {
   describeDirtyWorkingTree,
   isGitRepo,
@@ -84,6 +86,13 @@ const PIPELINE: StatusTransition[] = [
     label: "planner",
   },
   {
+    from: ["improve"],
+    inProgress: "improve",
+    onSuccess: "plan_ready",
+    runner: runImprover,
+    label: "improver",
+  },
+  {
     from: ["plan_ready"],
     inProgress: "plan_ready",
     onSuccess: "plan_ready",
@@ -96,6 +105,13 @@ const PIPELINE: StatusTransition[] = [
     onSuccess: "review",
     runner: runImplementer,
     label: "implementer",
+  },
+  {
+    from: ["verify"],
+    inProgress: "verify",
+    onSuccess: "review",
+    runner: runVerifier,
+    label: "verifier",
   },
   {
     from: ["review"],
@@ -196,13 +212,34 @@ function updateTaskStatus(
 }
 
 function runtimeProfileModeForStage(stage: CoordinatorStage): "task" | "plan" | "review" {
-  if (stage === "planner" || stage === "plan-checker") {
+  if (stage === "planner" || stage === "improver" || stage === "plan-checker") {
     return "plan";
   }
-  if (stage === "reviewer") {
+  if (stage === "reviewer" || stage === "verifier") {
     return "review";
   }
   return "task";
+}
+
+function shouldRunSkillsModeImprove(task: TaskRow): boolean {
+  return task.runPlanImprove && !task.useSubagents;
+}
+
+function shouldRunSkillsModeVerify(task: TaskRow): boolean {
+  return task.runPostVerify && !task.useSubagents;
+}
+
+function getStageSuccessStatus(task: TaskRow, stage: StatusTransition): TaskStatus {
+  if (stage.label === "planner" && shouldRunSkillsModeImprove(task)) {
+    return "improve";
+  }
+  if (stage.label === "implementer" && shouldRunSkillsModeVerify(task)) {
+    return "verify";
+  }
+  if (stage.label === "verifier" && task.skipReview) {
+    return "done";
+  }
+  return stage.onSuccess;
 }
 
 function resolveRuntimeGateRetryAfter(gateDecision: ReturnType<typeof evaluateRuntimeLimitGate>): {
@@ -383,13 +420,16 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
     if (stage.label === "implementer" && task.skipReview) {
       clearTaskActiveRuntimeSelection(task.id);
       clearTaskRuntimeLimitSnapshot(task.id);
-      updateTaskStatus(task.id, "done", CLEAN_STATE_RESET, {
+      const doneStatus = shouldRunSkillsModeVerify(task) ? "verify" : "done";
+      updateTaskStatus(task.id, doneStatus, CLEAN_STATE_RESET, {
         title: taskTitle,
         fromStatus: stage.inProgress,
       });
       log.info(
-        { taskId: task.id, from: stage.inProgress, to: "done" },
-        "Skip review enabled — bypassing review stage",
+        { taskId: task.id, from: stage.inProgress, to: doneStatus },
+        shouldRunSkillsModeVerify(task)
+          ? "Skip review enabled — bypassing review stage and moving to verify"
+          : "Skip review enabled — bypassing review stage",
       );
       return true;
     }
@@ -479,11 +519,12 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
       }
     }
 
+    const successStatus = getStageSuccessStatus(task, stage);
     clearTaskActiveRuntimeSelection(task.id);
     clearTaskRuntimeLimitSnapshot(task.id);
     updateTaskStatus(
       task.id,
-      stage.onSuccess,
+      successStatus,
       {
         ...CLEAN_STATE_RESET,
         reviewIterationCount: stage.label === "implementer" ? (task.reviewIterationCount ?? 0) : 0,
@@ -492,7 +533,7 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
     );
 
     log.info(
-      { taskId: task.id, from: stage.inProgress, to: stage.onSuccess },
+      { taskId: task.id, from: stage.inProgress, to: successStatus },
       "Status transition (success)",
     );
     return true;

@@ -1,9 +1,11 @@
 export const TASK_STATUSES = [
   "backlog",
   "planning",
+  "improve",
   "plan_ready",
   "implementing",
   "review",
+  "verify",
   "blocked_external",
   "done",
   "verified",
@@ -114,6 +116,8 @@ export interface Task {
   planTests: boolean;
   skipReview: boolean;
   useSubagents: boolean;
+  runPlanImprove: boolean;
+  runPostVerify: boolean;
   autoQa: boolean;
   qaChangeSummary: string | null;
   qaTestPlan: string | null;
@@ -262,6 +266,8 @@ export interface CreateTaskInput {
   planTests?: boolean;
   skipReview?: boolean;
   useSubagents?: boolean;
+  runPlanImprove?: boolean;
+  runPostVerify?: boolean;
   autoQa?: boolean;
   maxReviewIterations?: number;
   paused?: boolean;
@@ -287,6 +293,8 @@ export interface UpdateTaskInput {
   planTests?: boolean;
   skipReview?: boolean;
   useSubagents?: boolean;
+  runPlanImprove?: boolean;
+  runPostVerify?: boolean;
   autoQa?: boolean;
   qaChangeSummary?: string | null;
   qaTestPlan?: string | null;

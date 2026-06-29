@@ -97,7 +97,13 @@ export type HydratedTaskRow = TaskRow & {
   runtimeLimitSnapshot?: RuntimeLimitSnapshot | null;
 };
 
-export type CoordinatorStage = "planner" | "plan-checker" | "implementer" | "reviewer";
+export type CoordinatorStage =
+  | "planner"
+  | "improver"
+  | "plan-checker"
+  | "implementer"
+  | "reviewer"
+  | "verifier";
 
 export interface RuntimeWarmupScopeInput {
   projectId: string;
@@ -135,6 +141,8 @@ export type TaskFieldsUpdate = {
   planTests?: boolean;
   skipReview?: boolean;
   useSubagents?: boolean;
+  runPlanImprove?: boolean;
+  runPostVerify?: boolean;
   autoQa?: boolean;
   qaChangeSummary?: string | null;
   qaTestPlan?: string | null;
@@ -892,6 +900,8 @@ export function createTask(input: {
   planTests?: boolean;
   skipReview?: boolean;
   useSubagents?: boolean;
+  runPlanImprove?: boolean;
+  runPostVerify?: boolean;
   autoQa?: boolean;
   maxReviewIterations?: number;
   paused?: boolean;
@@ -940,6 +950,8 @@ export function createTask(input: {
       planTests: input.planTests,
       skipReview: input.skipReview,
       useSubagents: input.useSubagents,
+      runPlanImprove: input.runPlanImprove,
+      runPostVerify: input.runPostVerify,
       autoQa: input.autoQa,
       maxReviewIterations: input.maxReviewIterations,
       paused: input.paused,
@@ -1593,10 +1605,14 @@ export function findCoordinatorTaskCandidates(stage: CoordinatorStage, limit: nu
           eq(tasks.status, "implementing"),
           and(eq(tasks.status, "plan_ready"), eq(tasks.autoMode, true)),
         )
+      : stage === "improver"
+        ? inArray(tasks.status, ["improve"])
       : stage === "plan-checker"
         ? and(eq(tasks.status, "plan_ready"), eq(tasks.autoMode, true))
-        : stage === "planner"
-          ? inArray(tasks.status, ["planning"])
+      : stage === "planner"
+        ? inArray(tasks.status, ["planning"])
+        : stage === "verifier"
+          ? inArray(tasks.status, ["verify"])
           : inArray(tasks.status, ["review"]);
 
   const nowIso = new Date().toISOString();
@@ -1736,7 +1752,15 @@ export function countActivePipelineTasksForProject(projectId: string): number {
     .where(
       and(
         eq(tasks.projectId, projectId),
-        inArray(tasks.status, ["planning", "plan_ready", "implementing", "review", "blocked_external"]),
+        inArray(tasks.status, [
+          "planning",
+          "improve",
+          "plan_ready",
+          "implementing",
+          "review",
+          "verify",
+          "blocked_external",
+        ]),
       ),
     )
     .get();
@@ -1765,9 +1789,11 @@ export function hasActiveBranchBoundTasksForProject(projectId: string): boolean 
         inArray(tasks.status, [
           "backlog",
           "planning",
+          "improve",
           "plan_ready",
           "implementing",
           "review",
+          "verify",
           "blocked_external",
         ]),
       ),
@@ -1825,7 +1851,7 @@ export function releaseStaleTaskClaims(): number {
         lte(tasks.lockedUntil, nowIso),
         // Process died: heartbeat stale, task still in-progress, and not freshly claimed
         and(
-          inArray(tasks.status, ["planning", "implementing", "review"]),
+          inArray(tasks.status, ["planning", "improve", "implementing", "review", "verify"]),
           // Ensure task was claimed at least 5 min ago (avoid race with fresh claims)
           lte(tasks.updatedAt, heartbeatDeadline),
           or(
@@ -1955,7 +1981,7 @@ export function listStaleInProgressTasks(): TaskRow[] {
     .from(tasks)
     .where(
       and(
-        inArray(tasks.status, ["planning", "implementing", "review"]),
+        inArray(tasks.status, ["planning", "improve", "implementing", "review", "verify"]),
         eq(tasks.paused, false),
         // Skip tasks with active (non-expired) locks — they're being processed
         or(

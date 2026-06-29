@@ -114,9 +114,11 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
     const grouped: Record<TaskStatus, TaskListItem[]> = {
       backlog: [],
       planning: [],
+      improve: [],
       plan_ready: [],
       implementing: [],
       review: [],
+      verify: [],
       blocked_external: [],
       done: [],
       verified: [],

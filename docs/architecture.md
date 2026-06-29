@@ -118,13 +118,20 @@ Backlog ──[start_ai]──► Planning ──► Plan Ready ──► Implem
                             │                replanning]──┘
                             │
                      plan-coordinator          implement-coordinator        review + security sidecars
+
+Skills-mode tasks (`useSubagents=false`) can opt into two extra stages:
+
+Planning ──[runPlanImprove]──► Improve ──► Plan Ready
+Implementing ──[runPostVerify]──► Verify ──► Review
 ```
 
-| Stage Transition                                                                                 | Agent                                                                     | Description                                                                                                                                            |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Backlog → Planning → Plan Ready                                                                  | `plan-coordinator`                                                        | Iterative plan refinement via `plan-polisher`                                                                                                          |
-| Plan Ready → Implementing → Review                                                               | `implement-coordinator`                                                   | Parallel execution with worktrees + quality sidecars                                                                                                   |
-| Review → Done / Review → request_changes → Implementing / Review → Done + manual review required | `review-sidecar` + `security-sidecar` (+ auto review gate in coordinator) | Code review and security audit in parallel; in auto mode, structured blocking findings drive automatic rework until success or explicit manual handoff |
+| Stage Transition                                                                                 | Agent                                                                     | Description                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backlog → Planning → Plan Ready                                                                  | `plan-coordinator`                                                        | Iterative plan refinement via `plan-polisher`                                                                                                            |
+| Planning → Improve → Plan Ready                                                                  | `/aif-improve`                                                            | Optional skills-mode plan refinement. Enabled per task with `runPlanImprove`; ignored when `useSubagents=true`                                           |
+| Plan Ready → Implementing → Review                                                               | `implement-coordinator`                                                   | Parallel execution with worktrees + quality sidecars                                                                                                     |
+| Implementing → Verify → Review / Done                                                            | `/aif-verify`                                                             | Optional skills-mode implementation verification against the plan before review. Enabled per task with `runPostVerify`; ignored when `useSubagents=true` |
+| Review → Done / Review → request_changes → Implementing / Review → Done + manual review required | `review-sidecar` + `security-sidecar` (+ auto review gate in coordinator) | Code review and security audit in parallel; in auto mode, structured blocking findings drive automatic rework until success or explicit manual handoff   |
 
 ### Reliability Guards
 
@@ -132,7 +139,7 @@ The pipeline includes four reliability layers for long-running autonomous execut
 
 - **First-activity watchdog (SDK only):** After agent start, if no tool call or subagent spawn arrives within `AGENT_FIRST_ACTIVITY_TIMEOUT_MS` (default 60s), the agent is killed and restarted (up to 2 retries). Detects hung agents within seconds instead of waiting for the stale timeout. Disabled for CLI/API transports which do not stream tool events.
 - **Heartbeat liveness:** Task rows are updated with `lastHeartbeatAt` during agent activity and stage transitions.
-- **Stale-stage watchdog:** On each poll cycle, tasks stuck in `planning` / `implementing` / `review` beyond timeout are auto-recovered to `blocked_external` with retry backoff.
+- **Stale-stage watchdog:** On each poll cycle, tasks stuck in `planning` / `improve` / `implementing` / `review` / `verify` beyond timeout are auto-recovered to `blocked_external` with retry backoff.
 - **Runtime-limit auto-pause:** Exact/heuristic persisted runtime-limit snapshots can proactively move new work to `blocked_external` before a provider hard-fails, and structured `resetAt` / `retryAfterSeconds` replace random quota backoff when available.
 - **Transition reset:** valid transitions clear watchdog state (`blocked*`, `retryAfter`, `retryCount`) and refresh heartbeat baseline.
 
@@ -159,9 +166,11 @@ Defined in `packages/shared/src/stateMachine.ts`. Human actions available per st
 | ------------------ | -------------------------------------------------------- |
 | `backlog`          | `start_ai`                                               |
 | `planning`         | _(none — agent working)_                                 |
+| `improve`          | _(none — agent working)_                                 |
 | `plan_ready`       | `start_implementation`, `request_replanning`, `fast_fix` |
 | `implementing`     | _(none — agent working)_                                 |
 | `review`           | _(none — agent working)_                                 |
+| `verify`           | _(none — agent working)_                                 |
 | `blocked_external` | `retry_from_blocked`                                     |
 | `done`             | `approve_done`, `request_changes`                        |
 | `verified`         | _(terminal state)_                                       |
@@ -175,6 +184,8 @@ Auto-review strategy is controlled globally by `AGENT_AUTO_REVIEW_STRATEGY`:
 - If `closure_first` resolves previous blockers but the reviewer finds new blockers, or if max review iterations are reached, the task moves to `done` with `manualReviewRequired=true` and preserved `autoReviewState` for explicit human triage.
 
 Tasks also have a `skipReview` flag (default `false`). When `true`, the coordinator bypasses the review stage entirely — after successful implementation the task moves directly to `done`, skipping the `review-sidecar` and `security-sidecar` runs. This is useful for small changes or tasks where code review is unnecessary.
+
+Skills-mode tasks (`useSubagents=false`) also have two opt-in flags. `runPlanImprove` inserts `/aif-improve` after the initial plan and before `plan_ready`. `runPostVerify` inserts `/aif-verify` after implementation and before review; if `skipReview=true`, verification moves directly to `done`. Both flags default to `false` and are ignored for subagent tasks.
 
 ### QA Pipeline
 
