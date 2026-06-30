@@ -94,6 +94,7 @@ const { runImplementer } = await import("../subagents/implementer.js");
 const { runReviewer } = await import("../subagents/reviewer.js");
 const { runVerifier } = await import("../subagents/verifier.js");
 const { handleAutoReviewGate } = await import("../autoReviewHandler.js");
+const { StageManualBlockError } = await import("../stageErrorHandler.js");
 
 describe("coordinator", () => {
   beforeEach(() => {
@@ -308,6 +309,43 @@ describe("coordinator", () => {
     );
     const task = db.select().from(tasks).where(eq(tasks.id, "task-verify")).get();
     expect(task!.status).toBe("done");
+  });
+
+  it("should block verify tasks instead of retrying when verify gate blocks", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-blocking-verify",
+        projectId: "test-project",
+        title: "Blocking verify",
+        status: "verify",
+        useSubagents: false,
+        runPostVerify: true,
+      })
+      .run();
+
+    vi.mocked(runVerifier).mockRejectedValueOnce(
+      new StageManualBlockError(
+        "Verify stage returned a blocking gate result. Review the Verification section for details.",
+      ),
+    );
+
+    await pollAndProcess();
+
+    expect(runVerifier).toHaveBeenCalledTimes(1);
+    expect(runReviewer).not.toHaveBeenCalled();
+
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-blocking-verify")).get();
+    expect(task!.status).toBe("blocked_external");
+    expect(task!.blockedFromStatus).toBe("verify");
+    expect(task!.blockedReason).toBe(
+      "Verify stage returned a blocking gate result. Review the Verification section for details.",
+    );
+    expect(task!.retryAfter).toBeNull();
+
+    await pollAndProcess();
+
+    expect(runVerifier).toHaveBeenCalledTimes(1);
   });
 
   it("should not auto-implement plan_ready tasks when autoMode=false", async () => {

@@ -3,6 +3,7 @@ import { createRuntimeWorkflowSpec } from "@aif/runtime";
 import { logger } from "@aif/shared";
 import { assertCurrentBranch, restorePersistedBranch } from "../gitBranch.js";
 import { logActivity } from "../hooks.js";
+import { StageManualBlockError } from "../stageErrorHandler.js";
 import { executeSubagentQuery } from "../subagentQuery.js";
 
 const log = logger("verifier");
@@ -110,7 +111,10 @@ Task description: ${task.description}`;
   const gate = extractVerifyGateResult(resultText);
   if (gate?.status === "fail" || gate?.blocking === true) {
     log.warn({ taskId, blockers: gate.blockers ?? [] }, "Verify stage returned blocking result");
-    throw new Error("Verify stage returned a blocking gate result");
+    throw new StageManualBlockError(
+      "Verify stage returned a blocking gate result. Review the Verification section for details.",
+      "Verify stage returned a blocking gate result",
+    );
   }
 
   logActivity(taskId, "Agent", "verify stage complete (aif-verify)");
