@@ -8,6 +8,7 @@ import type {
   TaskComment,
   CreateTaskCommentInput,
   Project,
+  ProjectTaskOverview,
   CreateProjectInput,
   ChatRequest,
   ChatSession,
@@ -253,16 +254,12 @@ async function request<T>(
   return res.json();
 }
 
-// Task list fetch. Overloaded: bare listTasks() returns full Task[] (legacy
-// dashboard path, until consumers migrate to GET /projects/overview);
-// listTasks(projectId) returns lightweight TaskListItem[] (board/list).
-function listTasks(): Promise<Task[]>;
-function listTasks(projectId: string): Promise<TaskListItem[]>;
-function listTasks(projectId?: string): Promise<Task[] | TaskListItem[]> {
-  if (projectId === undefined) {
-    console.debug("[api] GET /tasks (bare, legacy)");
-    return request<Task[]>(API_BASE);
-  }
+// Task list fetch. projectId is required: the board/list view is always scoped.
+// The dashboard moved to GET /projects/overview (see #139), so the bare no-arg
+// listTasks() path has no remaining caller and is removed. The server route
+// still answers bare requests for backward compatibility, but the web client
+// never calls it.
+function listTasks(projectId: string): Promise<TaskListItem[]> {
   const qs = `?projectId=${encodeURIComponent(projectId)}`;
   console.debug("[api] GET /tasks?projectId=%s", projectId);
   return request<TaskListItem[]>(`${API_BASE}${qs}`);
@@ -296,6 +293,11 @@ export const api = {
   listProjects(): Promise<Project[]> {
     console.debug("[api] GET /projects");
     return request<Project[]>("/projects");
+  },
+
+  listProjectTaskOverviews(): Promise<ProjectTaskOverview[]> {
+    console.debug("[api] GET /projects/overview");
+    return request<ProjectTaskOverview[]>("/projects/overview");
   },
 
   createProject(input: CreateProjectInput): Promise<Project> {

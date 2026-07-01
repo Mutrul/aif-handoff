@@ -10,6 +10,7 @@ import type {
   CreateTaskCommentInput,
 } from "@aif/shared/browser";
 import { api } from "../lib/api.js";
+import { invalidateProjectTaskOverviews } from "./useProjects.js";
 
 export function useTasks(projectId: string | null) {
   return useQuery<TaskListItem[]>({
@@ -21,6 +22,7 @@ export function useTasks(projectId: string | null) {
 
 function invalidateTaskCollections(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: ["tasks"] });
+  invalidateProjectTaskOverviews(queryClient);
 }
 
 export function useTask(id: string | null) {
