@@ -185,7 +185,24 @@ Auto-review strategy is controlled globally by `AGENT_AUTO_REVIEW_STRATEGY`:
 
 Tasks also have a `skipReview` flag (default `false`). When `true`, the coordinator bypasses the review stage entirely — after successful implementation the task moves directly to `done`, skipping the `review-sidecar` and `security-sidecar` runs. This is useful for small changes or tasks where code review is unnecessary.
 
-Skills-mode tasks (`useSubagents=false`) also have two opt-in flags. `runPlanImprove` inserts `/aif-improve` after the initial plan and before `plan_ready`. `runPostVerify` inserts `/aif-verify` after implementation and before review; if `skipReview=true`, verification moves directly to `done`. Both flags default to `false` and are ignored for subagent tasks.
+Skills-mode tasks (`useSubagents=false`) also have two opt-in flags. `runPlanImprove` inserts `/aif-improve` after the initial plan and before `plan_ready`. This is plan refinement: it may replace the stored plan only when the improver returns a complete plan-shaped update. `runPostVerify` inserts `/aif-verify` after implementation and before review. This is an execution validation gate: it stores verification output, passes through to review/done on pass or warn, and moves to `blocked_external` for a blocking gate result. Both flags default to `false` and are ignored for subagent tasks.
+
+Flag interaction table:
+
+| `useSubagents` | `skipReview` | `runPlanImprove` | `runPostVerify` | Effective pipeline after planning starts                                |
+| -------------- | ------------ | ---------------- | --------------- | ----------------------------------------------------------------------- |
+| `true`         | `false`      | ignored          | ignored         | Planning → Plan Ready → Implementing → Review → Done                    |
+| `true`         | `true`       | ignored          | ignored         | Planning → Plan Ready → Implementing → Done                             |
+| `false`        | `false`      | `false`          | `false`         | Planning → Plan Ready → Implementing → Review → Done                    |
+| `false`        | `true`       | `false`          | `false`         | Planning → Plan Ready → Implementing → Done                             |
+| `false`        | `false`      | `true`           | `false`         | Planning → Improve → Plan Ready → Implementing → Review → Done          |
+| `false`        | `true`       | `true`           | `false`         | Planning → Improve → Plan Ready → Implementing → Done                   |
+| `false`        | `false`      | `false`          | `true`          | Planning → Plan Ready → Implementing → Verify → Review → Done           |
+| `false`        | `true`       | `false`          | `true`          | Planning → Plan Ready → Implementing → Verify → Done                    |
+| `false`        | `false`      | `true`           | `true`          | Planning → Improve → Plan Ready → Implementing → Verify → Review → Done |
+| `false`        | `true`       | `true`           | `true`          | Planning → Improve → Plan Ready → Implementing → Verify → Done          |
+
+`verify` remains a coordinator stage, not a human action. That keeps it covered by the same claim, timeout, watchdog, runtime-profile, and activity-log machinery as other autonomous work. The semantic contract is narrower than review: verify validates the implementation against the accepted plan, while review/security sidecars evaluate code quality and risk.
 
 ### QA Pipeline
 
