@@ -59,6 +59,8 @@ export const createTaskSchema = z.object({
   planTests: z.boolean().optional(),
   skipReview: z.boolean().optional(),
   useSubagents: z.boolean().default(getEnv().AGENT_USE_SUBAGENTS),
+  runPlanImprove: z.boolean().default(false),
+  runPostVerify: z.boolean().default(false),
   autoQa: z.boolean().optional(),
   maxReviewIterations: z
     .number()
@@ -88,6 +90,8 @@ export const updateTaskSchema = z.object({
   planTests: z.boolean().optional(),
   skipReview: z.boolean().optional(),
   useSubagents: z.boolean().optional(),
+  runPlanImprove: z.boolean().optional(),
+  runPostVerify: z.boolean().optional(),
   autoQa: z.boolean().optional(),
   maxReviewIterations: z.number().int().min(1).max(50).optional(),
   plan: z.string().nullable().optional(),

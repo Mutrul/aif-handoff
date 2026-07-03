@@ -21,6 +21,9 @@ const OWNER_BADGES: Record<TaskStatus, Array<{ label: string; className: string 
   planning: [
     { label: "AI controlled", className: "text-amber-300 border-amber-500/35 bg-amber-500/10" },
   ],
+  improve: [
+    { label: "AI controlled", className: "text-amber-300 border-amber-500/35 bg-amber-500/10" },
+  ],
   plan_ready: [
     { label: "AI controlled", className: "text-amber-300 border-amber-500/35 bg-amber-500/10" },
     { label: "Human decision", className: "text-green-300 border-green-500/35 bg-green-500/10" },
@@ -29,6 +32,9 @@ const OWNER_BADGES: Record<TaskStatus, Array<{ label: string; className: string 
     { label: "AI controlled", className: "text-amber-300 border-amber-500/35 bg-amber-500/10" },
   ],
   review: [
+    { label: "AI controlled", className: "text-amber-300 border-amber-500/35 bg-amber-500/10" },
+  ],
+  verify: [
     { label: "AI controlled", className: "text-amber-300 border-amber-500/35 bg-amber-500/10" },
   ],
   blocked_external: [

@@ -244,6 +244,8 @@ tasksRouter.post("/", jsonValidator(createTaskSchema), async (c) => {
   const resolvedSkipReview = body.skipReview ?? modeDefaults.skipReview;
   const resolvedPlanDocs = body.planDocs ?? modeDefaults.planDocs;
   const resolvedPlanTests = body.planTests ?? modeDefaults.planTests;
+  const resolvedRunPlanImprove = body.useSubagents ? false : body.runPlanImprove;
+  const resolvedRunPostVerify = body.useSubagents ? false : body.runPostVerify;
   if (
     body.skipReview === undefined ||
     body.planDocs === undefined ||
@@ -277,6 +279,8 @@ tasksRouter.post("/", jsonValidator(createTaskSchema), async (c) => {
     planTests: resolvedPlanTests,
     skipReview: resolvedSkipReview,
     useSubagents: body.useSubagents,
+    runPlanImprove: resolvedRunPlanImprove,
+    runPostVerify: resolvedRunPostVerify,
     autoQa: body.autoQa,
     maxReviewIterations: body.maxReviewIterations,
     paused: body.paused,
@@ -470,6 +474,11 @@ tasksRouter.put("/:id", jsonValidator(updateTaskSchema), async (c) => {
   }
 
   const { plan, attachments: incomingAttachments, ...updatePayload } = body;
+  const effectiveUseSubagents = updatePayload.useSubagents ?? existing.useSubagents;
+  if (effectiveUseSubagents) {
+    updatePayload.runPlanImprove = false;
+    updatePayload.runPostVerify = false;
+  }
 
   // Mirror POST /tasks: when plannerMode changes, fill omitted flags from mode defaults.
   if (updatePayload.plannerMode !== undefined) {

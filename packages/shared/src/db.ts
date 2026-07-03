@@ -84,6 +84,8 @@ function ensureTables(sqlite: Database.Database): void {
       plan_tests INTEGER NOT NULL DEFAULT 0,
       skip_review INTEGER NOT NULL DEFAULT 0,
       use_subagents INTEGER NOT NULL DEFAULT 0,
+      run_plan_improve INTEGER NOT NULL DEFAULT 0,
+      run_post_verify INTEGER NOT NULL DEFAULT 0,
       auto_qa INTEGER NOT NULL DEFAULT 0,
       qa_change_summary TEXT,
       qa_test_plan TEXT,
@@ -720,6 +722,14 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE tasks ADD COLUMN qa_test_plan TEXT;
       ALTER TABLE tasks ADD COLUMN qa_test_cases TEXT;
       ALTER TABLE tasks ADD COLUMN qa_status TEXT NOT NULL DEFAULT 'idle';
+    `,
+  },
+  {
+    version: 24,
+    description: "Add optional skills-mode improve and verify task flags",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN run_plan_improve INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE tasks ADD COLUMN run_post_verify INTEGER NOT NULL DEFAULT 0;
     `,
   },
 ];

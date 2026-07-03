@@ -703,6 +703,8 @@ POST /tasks
 | `skipReview` | boolean | no | `false` | Skip the review stage — task moves directly from implementing to done |
 | `paused` | boolean | no | `false` | Pause agent processing — coordinator skips this task until resumed |
 | `useSubagents` | boolean | no | `false` | Run via custom subagents (`plan-coordinator`, `implement-coordinator`, sidecars). `false` uses `aif-*` skills directly |
+| `runPlanImprove` | boolean | no | `false` | Skills-mode only (`useSubagents=false`): run optional `/aif-improve` after planning and before `plan_ready`. Ignored and stored as `false` for subagent tasks |
+| `runPostVerify` | boolean | no | `false` | Skills-mode only (`useSubagents=false`): run optional `/aif-verify` after implementation and before review. With `skipReview=true`, verification moves directly to `done`. Ignored and stored as `false` for subagent tasks |
 | `autoQa` | boolean | no | `false` | Automatically run the QA pipeline (`/aif-qa --all`) when the task is approved (`approve_done`: `done → verified`) |
 | `runtimeProfileId` | string \| null | no | `null` | Task-specific runtime override. When absent, resolution falls back to project default, then app default, then environment fallback |
 | `roadmapAlias` | string | no | `null` | Roadmap alias for grouping (e.g., `v1.0`) |
@@ -794,6 +796,9 @@ PUT /tasks/:id
 | `attachments` | array | File attachments |
 | `priority` | integer | Priority (0-5) |
 | `autoMode` | boolean | Auto-advance mode (includes automatic post-review rework loop when enabled) |
+| `useSubagents` | boolean | Run via custom subagents. When set to `true`, `runPlanImprove` and `runPostVerify` are reset to `false` |
+| `runPlanImprove` | boolean | Skills-mode only: run optional `/aif-improve` after planning and before `plan_ready` |
+| `runPostVerify` | boolean | Skills-mode only: run optional `/aif-verify` after implementation and before review. With `skipReview=true`, verification moves directly to `done` |
 | `autoQa` | boolean | Auto-run the QA pipeline when the task is approved (`done → verified`) |
 | `paused` | boolean | Pause/resume agent processing for this task |
 | `runtimeProfileId` | string\|null | Task-specific runtime override |

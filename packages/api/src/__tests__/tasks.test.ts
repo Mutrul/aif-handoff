@@ -290,7 +290,47 @@ describe("tasks API", () => {
       expect(body.priority).toBe(2);
       expect(body.autoMode).toBe(true);
       expect(body.isFix).toBe(false);
+      expect(body.runPlanImprove).toBe(false);
+      expect(body.runPostVerify).toBe(false);
       expect(body.status).toBe("backlog");
+    });
+
+    it("should persist improve and verify flags only for skills-mode tasks", async () => {
+      const skillsRes = await app.request("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Skills workflow task",
+          projectId: "test-project",
+          useSubagents: false,
+          runPlanImprove: true,
+          runPostVerify: true,
+        }),
+      });
+
+      expect(skillsRes.status).toBe(201);
+      const skillsBody = await skillsRes.json();
+      expect(skillsBody.useSubagents).toBe(false);
+      expect(skillsBody.runPlanImprove).toBe(true);
+      expect(skillsBody.runPostVerify).toBe(true);
+
+      const subagentRes = await app.request("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Subagent workflow task",
+          projectId: "test-project",
+          useSubagents: true,
+          runPlanImprove: true,
+          runPostVerify: true,
+        }),
+      });
+
+      expect(subagentRes.status).toBe(201);
+      const subagentBody = await subagentRes.json();
+      expect(subagentBody.useSubagents).toBe(true);
+      expect(subagentBody.runPlanImprove).toBe(false);
+      expect(subagentBody.runPostVerify).toBe(false);
     });
 
     it("lists ordinary created backlog tasks in append-to-tail order", async () => {

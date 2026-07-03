@@ -49,9 +49,11 @@ const emptyOverview: ProjectTaskOverview = {
   statusCounts: {
     backlog: 0,
     planning: 0,
+    improve: 0,
     plan_ready: 0,
     implementing: 0,
     review: 0,
+    verify: 0,
     blocked_external: 0,
     done: 0,
     verified: 0,
@@ -59,9 +61,11 @@ const emptyOverview: ProjectTaskOverview = {
   statusPreviews: {
     backlog: [],
     planning: [],
+    improve: [],
     plan_ready: [],
     implementing: [],
     review: [],
+    verify: [],
     blocked_external: [],
     done: [],
     verified: [],

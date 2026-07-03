@@ -42,6 +42,9 @@ vi.mock("@aif/data", async (importOriginal) => {
 vi.mock("../subagents/planner.js", () => ({
   runPlanner: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../subagents/improver.js", () => ({
+  runImprover: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("../subagents/planChecker.js", () => ({
   runPlanChecker: vi.fn().mockResolvedValue(undefined),
 }));
@@ -50,6 +53,9 @@ vi.mock("../subagents/implementer.js", () => ({
 }));
 vi.mock("../subagents/reviewer.js", () => ({
   runReviewer: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../subagents/verifier.js", () => ({
+  runVerifier: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../reviewGate.js", () => ({
   evaluateReviewCommentsForAutoMode: vi.fn().mockResolvedValue({ status: "success" }),
@@ -82,10 +88,13 @@ const {
   getStageSemaphore,
 } = await import("../coordinator.js");
 const { runPlanner } = await import("../subagents/planner.js");
+const { runImprover } = await import("../subagents/improver.js");
 const { runPlanChecker } = await import("../subagents/planChecker.js");
 const { runImplementer } = await import("../subagents/implementer.js");
 const { runReviewer } = await import("../subagents/reviewer.js");
+const { runVerifier } = await import("../subagents/verifier.js");
 const { handleAutoReviewGate } = await import("../autoReviewHandler.js");
+const { StageManualBlockError } = await import("../stageErrorHandler.js");
 
 describe("coordinator", () => {
   beforeEach(() => {
@@ -132,10 +141,55 @@ describe("coordinator", () => {
 
     // Pipeline processes all three stages in one poll cycle
     expect(runPlanner).toHaveBeenCalledWith("task-1", "/tmp/test");
+    expect(runImprover).not.toHaveBeenCalled();
     expect(runPlanChecker).toHaveBeenCalledWith("task-1", "/tmp/test");
     expect(runImplementer).toHaveBeenCalledWith("task-1", "/tmp/test");
     expect(runReviewer).toHaveBeenCalledWith("task-1", "/tmp/test");
+    expect(runVerifier).not.toHaveBeenCalled();
     const task = db.select().from(tasks).where(eq(tasks.id, "task-1")).get();
+    expect(task!.status).toBe("done");
+  });
+
+  it("should run optional improve stage only for skills-mode tasks", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-improve",
+        projectId: "test-project",
+        title: "Improve my plan",
+        status: "planning",
+        useSubagents: false,
+        runPlanImprove: true,
+      })
+      .run();
+
+    await pollAndProcess();
+
+    expect(runPlanner).toHaveBeenCalledWith("task-improve", "/tmp/test");
+    expect(runImprover).toHaveBeenCalledWith("task-improve", "/tmp/test");
+    expect(runPlanChecker).toHaveBeenCalledWith("task-improve", "/tmp/test");
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-improve")).get();
+    expect(task!.status).toBe("done");
+  });
+
+  it("should not run optional improve stage for subagent tasks even if flag is set", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-subagent-improve",
+        projectId: "test-project",
+        title: "Subagent plan",
+        status: "planning",
+        useSubagents: true,
+        runPlanImprove: true,
+      })
+      .run();
+
+    await pollAndProcess();
+
+    expect(runPlanner).toHaveBeenCalledWith("task-subagent-improve", "/tmp/test");
+    expect(runImprover).not.toHaveBeenCalled();
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-subagent-improve")).get();
     expect(task!.status).toBe("done");
   });
 
@@ -223,9 +277,249 @@ describe("coordinator", () => {
     expect(runPlanChecker).toHaveBeenCalledWith("task-2", "/tmp/test");
     expect(runImplementer).toHaveBeenCalledWith("task-2", "/tmp/test");
     expect(runReviewer).toHaveBeenCalledWith("task-2", "/tmp/test");
+    expect(runVerifier).not.toHaveBeenCalled();
     const task = db.select().from(tasks).where(eq(tasks.id, "task-2")).get();
     expect(task!.status).toBe("done");
   });
+
+  it("should run optional verify stage only for skills-mode tasks", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-verify",
+        projectId: "test-project",
+        title: "Verify me",
+        status: "plan_ready",
+        autoMode: true,
+        useSubagents: false,
+        runPostVerify: true,
+      })
+      .run();
+
+    await pollAndProcess();
+
+    expect(runImplementer).toHaveBeenCalledWith("task-verify", "/tmp/test");
+    expect(runVerifier).toHaveBeenCalledWith("task-verify", "/tmp/test");
+    expect(runReviewer).toHaveBeenCalledWith("task-verify", "/tmp/test");
+    expect(vi.mocked(runImplementer).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(runVerifier).mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(vi.mocked(runVerifier).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(runReviewer).mock.invocationCallOrder[0] ?? 0,
+    );
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-verify")).get();
+    expect(task!.status).toBe("done");
+  });
+
+  it("should block verify tasks instead of retrying when verify gate blocks", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-blocking-verify",
+        projectId: "test-project",
+        title: "Blocking verify",
+        status: "verify",
+        useSubagents: false,
+        runPostVerify: true,
+      })
+      .run();
+
+    vi.mocked(runVerifier).mockRejectedValueOnce(
+      new StageManualBlockError(
+        "Verify stage returned a blocking gate result. Review the Verification section for details.",
+      ),
+    );
+
+    await pollAndProcess();
+
+    expect(runVerifier).toHaveBeenCalledTimes(1);
+    expect(runReviewer).not.toHaveBeenCalled();
+
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-blocking-verify")).get();
+    expect(task!.status).toBe("blocked_external");
+    expect(task!.blockedFromStatus).toBe("verify");
+    expect(task!.blockedReason).toBe(
+      "Verify stage returned a blocking gate result. Review the Verification section for details.",
+    );
+    expect(task!.retryAfter).toBeNull();
+
+    await pollAndProcess();
+
+    expect(runVerifier).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      name: "subagent mode ignores improve/verify and runs review",
+      useSubagents: true,
+      skipReview: false,
+      runPlanImprove: true,
+      runPostVerify: true,
+      expectImprover: false,
+      expectVerifier: false,
+      expectReviewer: true,
+    },
+    {
+      name: "subagent mode with skipReview ignores verify and goes done",
+      useSubagents: true,
+      skipReview: true,
+      runPlanImprove: true,
+      runPostVerify: true,
+      expectImprover: false,
+      expectVerifier: false,
+      expectReviewer: false,
+    },
+    {
+      name: "skills mode baseline runs review",
+      useSubagents: false,
+      skipReview: false,
+      runPlanImprove: false,
+      runPostVerify: false,
+      expectImprover: false,
+      expectVerifier: false,
+      expectReviewer: true,
+    },
+    {
+      name: "skills mode skipReview goes done",
+      useSubagents: false,
+      skipReview: true,
+      runPlanImprove: false,
+      runPostVerify: false,
+      expectImprover: false,
+      expectVerifier: false,
+      expectReviewer: false,
+    },
+    {
+      name: "skills mode improve then review",
+      useSubagents: false,
+      skipReview: false,
+      runPlanImprove: true,
+      runPostVerify: false,
+      expectImprover: true,
+      expectVerifier: false,
+      expectReviewer: true,
+    },
+    {
+      name: "skills mode improve with skipReview goes done",
+      useSubagents: false,
+      skipReview: true,
+      runPlanImprove: true,
+      runPostVerify: false,
+      expectImprover: true,
+      expectVerifier: false,
+      expectReviewer: false,
+    },
+    {
+      name: "skills mode verify then review",
+      useSubagents: false,
+      skipReview: false,
+      runPlanImprove: false,
+      runPostVerify: true,
+      expectImprover: false,
+      expectVerifier: true,
+      expectReviewer: true,
+    },
+    {
+      name: "skills mode verify with skipReview goes done",
+      useSubagents: false,
+      skipReview: true,
+      runPlanImprove: false,
+      runPostVerify: true,
+      expectImprover: false,
+      expectVerifier: true,
+      expectReviewer: false,
+    },
+    {
+      name: "skills mode improve and verify then review",
+      useSubagents: false,
+      skipReview: false,
+      runPlanImprove: true,
+      runPostVerify: true,
+      expectImprover: true,
+      expectVerifier: true,
+      expectReviewer: true,
+    },
+    {
+      name: "skills mode improve and verify with skipReview goes done",
+      useSubagents: false,
+      skipReview: true,
+      runPlanImprove: true,
+      runPostVerify: true,
+      expectImprover: true,
+      expectVerifier: true,
+      expectReviewer: false,
+    },
+  ])(
+    "should follow the skills-mode flag truth table: $name",
+    async ({
+      name,
+      useSubagents,
+      skipReview,
+      runPlanImprove,
+      runPostVerify,
+      expectImprover,
+      expectVerifier,
+      expectReviewer,
+    }) => {
+      const db = testDb.current;
+      const taskId = `task-flag-table-${name.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}`;
+      db.insert(tasks)
+        .values({
+          id: taskId,
+          projectId: "test-project",
+          title: name,
+          status: "planning",
+          autoMode: true,
+          useSubagents,
+          skipReview,
+          runPlanImprove,
+          runPostVerify,
+        })
+        .run();
+
+      await pollAndProcess();
+
+      expect(runPlanner).toHaveBeenCalledWith(taskId, "/tmp/test");
+      expect(runPlanChecker).toHaveBeenCalledWith(taskId, "/tmp/test");
+      expect(runImplementer).toHaveBeenCalledWith(taskId, "/tmp/test");
+
+      if (expectImprover) {
+        expect(runImprover).toHaveBeenCalledWith(taskId, "/tmp/test");
+        expect(vi.mocked(runPlanner).mock.invocationCallOrder[0]).toBeLessThan(
+          vi.mocked(runImprover).mock.invocationCallOrder[0] ?? 0,
+        );
+        expect(vi.mocked(runImprover).mock.invocationCallOrder[0]).toBeLessThan(
+          vi.mocked(runPlanChecker).mock.invocationCallOrder[0] ?? 0,
+        );
+      } else {
+        expect(runImprover).not.toHaveBeenCalled();
+      }
+
+      if (expectVerifier) {
+        expect(runVerifier).toHaveBeenCalledWith(taskId, "/tmp/test");
+        expect(vi.mocked(runImplementer).mock.invocationCallOrder[0]).toBeLessThan(
+          vi.mocked(runVerifier).mock.invocationCallOrder[0] ?? 0,
+        );
+      } else {
+        expect(runVerifier).not.toHaveBeenCalled();
+      }
+
+      if (expectReviewer) {
+        expect(runReviewer).toHaveBeenCalledWith(taskId, "/tmp/test");
+        const previousStageOrder = expectVerifier
+          ? (vi.mocked(runVerifier).mock.invocationCallOrder[0] ?? 0)
+          : (vi.mocked(runImplementer).mock.invocationCallOrder[0] ?? 0);
+        expect(previousStageOrder).toBeLessThan(
+          vi.mocked(runReviewer).mock.invocationCallOrder[0] ?? 0,
+        );
+      } else {
+        expect(runReviewer).not.toHaveBeenCalled();
+      }
+
+      const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+      expect(task!.status).toBe("done");
+    },
+  );
 
   it("should not auto-implement plan_ready tasks when autoMode=false", async () => {
     const db = testDb.current;
@@ -959,6 +1253,29 @@ describe("coordinator", () => {
     expect(runImplementer).toHaveBeenCalledWith("task-skip-review", "/tmp/test");
     expect(runReviewer).not.toHaveBeenCalled();
     const task = db.select().from(tasks).where(eq(tasks.id, "task-skip-review")).get();
+    expect(task!.status).toBe("done");
+  });
+
+  it("should verify before done when skipReview=true and runPostVerify=true", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-skip-review-verify",
+        projectId: "test-project",
+        title: "Skip review verified task",
+        status: "implementing",
+        skipReview: true,
+        useSubagents: false,
+        runPostVerify: true,
+      })
+      .run();
+
+    await pollAndProcess();
+
+    expect(runImplementer).toHaveBeenCalledWith("task-skip-review-verify", "/tmp/test");
+    expect(runVerifier).toHaveBeenCalledWith("task-skip-review-verify", "/tmp/test");
+    expect(runReviewer).not.toHaveBeenCalled();
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-skip-review-verify")).get();
     expect(task!.status).toBe("done");
   });
 
