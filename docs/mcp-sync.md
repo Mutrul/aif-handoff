@@ -61,6 +61,8 @@ When running in Docker, or in local development with `MCP_PORT` set to a valid i
 
 The HTTP mode also exposes a `/health` endpoint for Docker healthchecks.
 
+The HTTP transport is **stateless** — each request is handled independently, so multiple clients (several Claude Code windows, or remote clients) can connect to the same `/mcp` endpoint concurrently. Every `initialize` gets its own short-lived server/transport with no shared session, so a second client no longer collides with the first (previously the second client received `-32600 "Server already initialized"`). Server→client events (task updates) are delivered out-of-band via the API broadcast endpoint, not through the MCP transport.
+
 When the web settings UI calls `POST /settings/mcp/install`, the API installs this HTTP URL form automatically whenever `MCP_PORT` is a valid integer port. If `MCP_PORT` is missing or invalid, it falls back to the local `stdio`/`npx tsx packages/mcp/src/index.ts` entry. Direct MCP HTTP startup (`packages/mcp`) is stricter: invalid `MCP_PORT` values fail fast during startup instead of silently coercing the port.
 
 ### Environment Variables
