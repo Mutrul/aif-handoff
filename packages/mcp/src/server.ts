@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import { logger } from "@aif/shared";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -75,12 +76,25 @@ export function createMcpServer(context: ToolContext): McpServer {
   return server;
 }
 
+type McpDispatcher = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+
 /**
  * Build the Node HTTP request handler. Exposed (with the factories above) for
  * tests so routing + transport wiring can be exercised without binding a port
  * or importing the process entry (`index.ts` self-runs `main()` on import).
+ *
+ * Routing (`/health`, `/mcp`, 404) is shared; the `/mcp` behavior is selected
+ * ONCE, at handler-build time, by `env.httpMultiSession`:
+ *  - `true`  → stateless per-request server/transport (multiple clients connect
+ *              concurrently — see {@link createStatelessMcpDispatcher}).
+ *  - `false` → legacy single shared stateful transport, preserving the previous
+ *              behavior (see {@link createSingleSessionMcpDispatcher}).
  */
 export function createMcpHttpHandler(env: McpEnv, context: ToolContext) {
+  const handleMcp = env.httpMultiSession
+    ? createStatelessMcpDispatcher(context)
+    : createSingleSessionMcpDispatcher(context);
+
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const url = new URL(req.url ?? "/", `http://localhost:${env.httpPort}`);
 
@@ -91,51 +105,110 @@ export function createMcpHttpHandler(env: McpEnv, context: ToolContext) {
     }
 
     if (url.pathname === "/mcp") {
-      log.debug({ method: req.method }, "MCP request received");
-
-      // Stateless mode: a StreamableHTTPServerTransport with no sessionIdGenerator
-      // handles exactly ONE request, so a fresh server + transport is created per
-      // request. This lets every client (each Claude Code window) initialize
-      // independently instead of colliding on a single shared stateful session
-      // (which returned -32600 "Server already initialized" for the 2nd client).
-      // Server->client events do not travel through this transport — they are
-      // pushed via the API broadcast endpoint — so no session tracking is needed.
-      const server = createMcpServer(context);
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-      });
-
-      res.on("close", () => {
-        log.debug("MCP request closed — tearing down per-request server/transport");
-        void transport.close();
-        void server.close();
-      });
-
-      try {
-        await server.connect(transport);
-        await transport.handleRequest(req, res);
-      } catch (error) {
-        log.error(
-          { error: error instanceof Error ? error.message : String(error) },
-          "MCP request handling failed",
-        );
-        if (!res.headersSent) {
-          res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              error: { code: -32603, message: "Internal server error" },
-              id: null,
-            }),
-          );
-        }
-      }
+      await handleMcp(req, res);
       return;
     }
 
     res.writeHead(404);
     res.end("Not found");
   };
+}
+
+/**
+ * Multi-session transport (opt-in via `AIF_MCP_HTTP_MULTI_SESSION_ENABLED`).
+ *
+ * A {@link StreamableHTTPServerTransport} with no `sessionIdGenerator` handles
+ * exactly ONE request, so a fresh server + transport is created per POST. This
+ * lets every client (each Claude Code window) initialize independently instead
+ * of colliding on a single shared stateful session (which returned -32600
+ * "Server already initialized" for the 2nd client). Server->client events do not
+ * travel through this transport — they are pushed via the API broadcast
+ * endpoint — so no session tracking is needed.
+ *
+ * The stateless path is request/response only: it accepts `POST` and rejects
+ * other methods with `405`. The SDK client opens an optional `GET /mcp` SSE
+ * stream after initialization and treats `405` as "server does not offer SSE";
+ * refusing it avoids holding an idle server/transport open per connected client
+ * for events we never push through this transport.
+ */
+function createStatelessMcpDispatcher(context: ToolContext): McpDispatcher {
+  return async (req, res) => {
+    log.debug({ method: req.method, mode: "multi-session" }, "MCP request received");
+
+    if (req.method !== "POST") {
+      res.writeHead(405, { Allow: "POST" });
+      res.end("Method Not Allowed");
+      return;
+    }
+
+    const server = createMcpServer(context);
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+
+    res.on("close", () => {
+      log.debug("MCP request closed — tearing down per-request server/transport");
+      void transport.close();
+      void server.close();
+    });
+
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(req, res);
+    } catch (error) {
+      log.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        "MCP request handling failed",
+      );
+      respondInternalError(res);
+    }
+  };
+}
+
+/**
+ * Legacy single-session transport (default, off-by-default flag).
+ *
+ * ONE server + ONE stateful transport shared across the whole process, connected
+ * once (lazily) on the first request. This preserves the pre-multi-session
+ * behavior: a second client's `initialize` still returns -32600 "Server already
+ * initialized". Kept behind `AIF_MCP_HTTP_MULTI_SESSION_ENABLED` so enabling
+ * concurrent clients is an explicit, intentional rollout rather than an
+ * unconditional change to the external MCP transport contract.
+ */
+function createSingleSessionMcpDispatcher(context: ToolContext): McpDispatcher {
+  const server = createMcpServer(context);
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+  });
+  let connected: Promise<void> | null = null;
+
+  return async (req, res) => {
+    log.debug({ method: req.method, mode: "single-session" }, "MCP request received");
+    try {
+      connected ??= server.connect(transport);
+      await connected;
+      await transport.handleRequest(req, res);
+    } catch (error) {
+      log.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        "MCP request handling failed",
+      );
+      respondInternalError(res);
+    }
+  };
+}
+
+/** Send a JSON-RPC internal-error response unless headers were already sent. */
+function respondInternalError(res: ServerResponse): void {
+  if (res.headersSent) return;
+  res.writeHead(500, { "Content-Type": "application/json" });
+  res.end(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      error: { code: -32603, message: "Internal server error" },
+      id: null,
+    }),
+  );
 }
 
 export { loadMcpEnv } from "./env.js";

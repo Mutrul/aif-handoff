@@ -38,10 +38,12 @@ const env = {
   rateLimitWriteRpm: 30,
   rateLimitReadBurst: 10,
   rateLimitWriteBurst: 5,
+  // Exercise the opt-in stateless multi-session path in the main suite.
+  httpMultiSession: true,
 };
 
-/** POST a JSON-RPC `initialize` with the headers the SDK requires (else 406). */
-function initialize(port: number): Promise<Response> {
+/** POST an arbitrary JSON-RPC message with the headers the SDK requires (else 406). */
+function postRpc(port: number, body: Record<string, unknown>): Promise<Response> {
   return fetch(`http://localhost:${port}/mcp`, {
     method: "POST",
     headers: {
@@ -49,16 +51,21 @@ function initialize(port: number): Promise<Response> {
       // The SDK returns 406 unless the client accepts BOTH content types.
       Accept: "application/json, text/event-stream",
     },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-06-18",
-        capabilities: {},
-        clientInfo: { name: "test-client", version: "0.0.0" },
-      },
-    }),
+    body: JSON.stringify(body),
+  });
+}
+
+/** POST a JSON-RPC `initialize` request. */
+function initialize(port: number): Promise<Response> {
+  return postRpc(port, {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "test-client", version: "0.0.0" },
+    },
   });
 }
 
@@ -78,7 +85,7 @@ async function readJsonRpc(res: Response): Promise<Record<string, unknown> | nul
   return null;
 }
 
-describe("MCP HTTP transport", () => {
+describe("MCP HTTP transport — multi-session (opt-in)", () => {
   let server: Server;
   let port: number;
 
@@ -116,6 +123,44 @@ describe("MCP HTTP transport", () => {
     expect(body2?.result).toBeDefined();
   });
 
+  it("lets a client initialize then list tools through the stateless path", async () => {
+    // Proves real MCP usage works, not just the initialize handshake: a
+    // transport change that fixed init but broke tools/list would be caught
+    // here. Stateless per-request transports do not gate tools/list behind a
+    // prior initialize on the same connection, so a fresh POST lists tools.
+    const initRes = await initialize(port);
+    expect(initRes.status).toBe(200);
+    await readJsonRpc(initRes);
+
+    const listRes = await postRpc(port, {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/list",
+      params: {},
+    });
+    const listBody = await readJsonRpc(listRes);
+
+    expect(listRes.status).toBe(200);
+    expect(listBody?.error).toBeUndefined();
+    const tools = (listBody?.result as { tools?: unknown[] } | undefined)?.tools;
+    expect(Array.isArray(tools)).toBe(true);
+    expect((tools as unknown[]).length).toBeGreaterThan(0);
+  });
+
+  it("rejects non-POST /mcp with 405 instead of opening an idle SSE stream", async () => {
+    // The SDK client opens an optional GET SSE stream after init and treats 405
+    // as "no server SSE". Since events are pushed out-of-band via the API
+    // broadcast endpoint, accepting GET would hold an idle server/transport per
+    // client for no benefit — so the stateless path is POST-only.
+    const res = await fetch(`http://localhost:${port}/mcp`, {
+      method: "GET",
+      headers: { Accept: "text/event-stream" },
+    });
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toContain("POST");
+    await res.text();
+  });
+
   it("returns 404 for unknown paths", async () => {
     const res = await fetch(`http://localhost:${port}/unknown`);
     expect(res.status).toBe(404);
@@ -132,5 +177,36 @@ describe("MCP HTTP transport", () => {
       expect(context.rateLimiter.check("listTasks", "read")).toBe(true);
     }
     expect(context.rateLimiter.check("listTasks", "read")).toBe(false);
+  });
+});
+
+describe("MCP HTTP transport — legacy single-session (default, flag off)", () => {
+  const legacyEnv = { ...env, httpMultiSession: false };
+  let server: Server;
+  let port: number;
+
+  beforeAll(async () => {
+    const context = createToolContext(legacyEnv);
+    server = createServer(createMcpHttpHandler(legacyEnv, context));
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("preserves previous behavior: the 2nd client initialize collides with -32600", async () => {
+    // With the flag off, one shared stateful transport is reused across the
+    // process. The first client initializes, the second collides — the exact
+    // pre-fix behavior that AIF_MCP_HTTP_MULTI_SESSION_ENABLED gates.
+    const res1 = await initialize(port);
+    const body1 = await readJsonRpc(res1);
+    expect(res1.status).toBe(200);
+    expect(body1?.result).toBeDefined();
+
+    const res2 = await initialize(port);
+    const body2 = await readJsonRpc(res2);
+    expect((body2?.error as { code?: number } | undefined)?.code).toBe(-32600);
   });
 });
