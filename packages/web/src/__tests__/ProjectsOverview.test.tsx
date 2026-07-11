@@ -17,6 +17,8 @@ const emptyProject: Project = {
   planCheckerMaxBudgetUsd: null,
   implementerMaxBudgetUsd: null,
   reviewSidecarMaxBudgetUsd: null,
+  pinnedAt: null,
+  groupName: null,
   autoQueueMode: false,
   parallelEnabled: false,
   defaultTaskRuntimeProfileId: null,
@@ -33,6 +35,7 @@ const emptyProject: Project = {
 
 const emptyOverview: ProjectTaskOverview = {
   projectId: "proj-empty",
+  lastActivityAt: null,
   totalTasks: 0,
   completedTasks: 0,
   verifiedTasks: 0,

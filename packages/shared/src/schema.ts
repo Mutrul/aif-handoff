@@ -12,6 +12,8 @@ export const projects = sqliteTable("projects", {
   planCheckerMaxBudgetUsd: real("plan_checker_max_budget_usd"),
   implementerMaxBudgetUsd: real("implementer_max_budget_usd"),
   reviewSidecarMaxBudgetUsd: real("review_sidecar_max_budget_usd"),
+  pinnedAt: text("pinned_at"),
+  groupName: text("group_name"),
   parallelEnabled: integer("parallel_enabled", { mode: "boolean" }).notNull().default(false),
   autoQueueMode: integer("auto_queue_mode", { mode: "boolean" }).notNull().default(false),
   defaultTaskRuntimeProfileId: text("default_task_runtime_profile_id"),

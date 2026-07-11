@@ -154,6 +154,7 @@ describe("projects API", () => {
           tokenOutput: 20,
           tokenTotal: 30,
           costUsd: 0.25,
+          updatedAt: "2026-01-01T10:00:00.000Z",
         },
         {
           id: "task-a-2",
@@ -161,6 +162,7 @@ describe("projects API", () => {
           title: "Done item",
           status: "done",
           retryCount: 2,
+          updatedAt: "2026-01-03T10:00:00.000Z",
         },
         {
           id: "task-b-1",
@@ -188,6 +190,7 @@ describe("projects API", () => {
       totalTokenOutput: 20,
       totalTokenTotal: 30,
       totalCostUsd: 0.25,
+      lastActivityAt: "2026-01-03T10:00:00.000Z",
     });
     expect(overviewA.statusCounts.backlog).toBe(1);
     expect(overviewA.statusCounts.done).toBe(1);
@@ -227,6 +230,48 @@ describe("projects API", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBeDefined();
+  });
+
+  it("updates project pinning and grouping", async () => {
+    testDb.current
+      .insert(projects)
+      .values({ id: "organized", name: "Organized", rootPath: "/tmp/organized" })
+      .run();
+
+    const res = await app.request("/projects/organized/organization", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pinned: true, groupName: "Platform" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      id: "organized",
+      groupName: "Platform",
+    });
+    expect(mockBroadcast).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "project:organization_updated" }),
+    );
+  });
+
+  it("returns 404 when organizing a missing project", async () => {
+    const res = await app.request("/projects/missing/organization", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pinned: true }),
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects an empty project organization patch", async () => {
+    const res = await app.request("/projects/missing/organization", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(400);
   });
 
   it("maps Docker host project paths to the container project mount on create", async () => {

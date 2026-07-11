@@ -45,6 +45,8 @@ export interface Project {
   planCheckerMaxBudgetUsd: number | null;
   implementerMaxBudgetUsd: number | null;
   reviewSidecarMaxBudgetUsd: number | null;
+  pinnedAt: string | null;
+  groupName: string | null;
   parallelEnabled: boolean;
   autoQueueMode: boolean;
   defaultTaskRuntimeProfileId?: string | null;
@@ -73,6 +75,11 @@ export interface CreateProjectInput {
   defaultPlanRuntimeProfileId?: string | null;
   defaultReviewRuntimeProfileId?: string | null;
   defaultChatRuntimeProfileId?: string | null;
+}
+
+export interface UpdateProjectOrganizationInput {
+  pinned?: boolean;
+  groupName?: string | null;
 }
 
 export interface AppSettings {
@@ -204,6 +211,7 @@ export interface ProjectTaskPreview {
 
 export interface ProjectTaskOverview {
   projectId: string;
+  lastActivityAt: string | null;
   totalTasks: number;
   completedTasks: number;
   verifiedTasks: number;
@@ -355,6 +363,7 @@ export interface ReorderTaskInput {
 /** WebSocket event types */
 export type WsEventType =
   | "project:created"
+  | "project:organization_updated"
   | "task:created"
   | "task:updated"
   | "task:deleted"

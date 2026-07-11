@@ -41,6 +41,7 @@ const {
   findProjectById,
   createProject,
   updateProject,
+  updateProjectOrganization,
   deleteProject,
   findProjectByTaskId,
   appendTaskActivityLog,
@@ -313,6 +314,23 @@ describe("data layer", () => {
       ]);
       expect(proj1.statusPreviews.done).toEqual([{ id: done.id, title: "Done B" }]);
       expect(proj2.totalTasks).toBe(1);
+    });
+
+    it("returns the latest task activity timestamp per project", () => {
+      const older = createTask({ projectId: "proj-1", title: "Older", description: "D" })!;
+      const newer = createTask({ projectId: "proj-1", title: "Newer", description: "D" })!;
+      testDb.current
+        .update(tasks)
+        .set({ updatedAt: "2026-01-01T10:00:00.000Z" })
+        .where(eq(tasks.id, older.id))
+        .run();
+      testDb.current
+        .update(tasks)
+        .set({ updatedAt: "2026-01-02T10:00:00.000Z" })
+        .where(eq(tasks.id, newer.id))
+        .run();
+
+      expect(listProjectTaskOverviews()[0]?.lastActivityAt).toBe("2026-01-02T10:00:00.000Z");
     });
   });
 
@@ -648,6 +666,24 @@ describe("data layer", () => {
       expect(listProjects()).toHaveLength(1);
     });
 
+    it("listProjects returns projects in deterministic case-insensitive name order", () => {
+      testDb.current.delete(projects).run();
+      testDb.current
+        .insert(projects)
+        .values([
+          { id: "zulu-2", name: "zulu", rootPath: "/tmp/zulu-2" },
+          { id: "alpha", name: "Alpha", rootPath: "/tmp/alpha" },
+          { id: "zulu-1", name: "Zulu", rootPath: "/tmp/zulu-1" },
+        ])
+        .run();
+
+      expect(listProjects().map((project) => project.id)).toEqual([
+        "alpha",
+        "zulu-1",
+        "zulu-2",
+      ]);
+    });
+
     it("findProjectById returns project", () => {
       expect(findProjectById("proj-1")).toBeDefined();
     });
@@ -674,6 +710,32 @@ describe("data layer", () => {
       const updated = updateProject(p!.id, { name: "Updated", rootPath: "/tmp/updated" });
       expect(updated!.name).toBe("Updated");
       expect(updated!.rootPath).toBe("/tmp/updated");
+    });
+
+    it("updates project pin and group organization without changing core fields", () => {
+      const pinned = updateProjectOrganization("proj-1", {
+        pinned: true,
+        groupName: "  Platform  ",
+      });
+
+      expect(pinned).toMatchObject({
+        id: "proj-1",
+        name: "Test",
+        rootPath: "/tmp/test",
+        groupName: "Platform",
+      });
+      expect(pinned?.pinnedAt).toBeTruthy();
+
+      const pinnedAgain = updateProjectOrganization("proj-1", { pinned: true });
+      expect(pinnedAgain?.pinnedAt).toBe(pinned?.pinnedAt);
+
+      const cleared = updateProjectOrganization("proj-1", { pinned: false, groupName: "" });
+      expect(cleared?.pinnedAt).toBeNull();
+      expect(cleared?.groupName).toBeNull();
+    });
+
+    it("returns undefined when organizing a missing project", () => {
+      expect(updateProjectOrganization("missing", { pinned: true })).toBeUndefined();
     });
 
     it("updateProject preserves omitted runtime defaults and clears explicit nulls", () => {

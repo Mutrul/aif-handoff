@@ -1,12 +1,14 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useQuery } from "@tanstack/react-query";
-import { FolderOpen, Plus, ChevronDown, Pencil, Trash2, Plug } from "lucide-react";
+import { FolderOpen, Plus, ChevronDown, Pencil, Trash2, Plug, Pin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ListButton } from "@/components/ui/list-button";
+import { ScrollableContainer } from "@/components/ui/scrollable-container";
+import { Select } from "@/components/ui/select";
 import {
   Dialog,
   DialogClose,
@@ -20,10 +22,13 @@ import {
   useUpdateProject,
   useDeleteProject,
   useSetAutoQueueMode,
+  useProjectTaskOverviews,
+  useUpdateProjectOrganization,
 } from "@/hooks/useProjects";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import type { Project } from "@aif/shared/browser";
+import { PROJECT_SORT_OPTIONS, sortProjects, type ProjectSort } from "@/lib/projectSorting";
 
 interface Props {
   selectedId: string | null;
@@ -39,6 +44,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
   const setAutoQueue = useSetAutoQueueMode();
+  const updateOrganization = useUpdateProjectOrganization();
   const { toast } = useToast();
 
   const showMutationError = (error: unknown, fallback: string) => {
@@ -48,8 +54,12 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
   const [dialogMode, setDialogMode] = useState<DialogMode>("create");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [projectQuery, setProjectQuery] = useState("");
+  const [projectSort, setProjectSort] = useState<ProjectSort>("name");
+  const [selectedProjectIndex, setSelectedProjectIndex] = useState(0);
   const [name, setName] = useState("");
   const [rootPath, setRootPath] = useState("");
+  const [groupName, setGroupName] = useState("");
   const [plannerMaxBudgetUsd, setPlannerMaxBudgetUsd] = useState("");
   const [planCheckerMaxBudgetUsd, setPlanCheckerMaxBudgetUsd] = useState("");
   const [implementerMaxBudgetUsd, setImplementerMaxBudgetUsd] = useState("");
@@ -57,8 +67,57 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
   const [parallelEnabled, setParallelEnabled] = useState(false);
   const [autoQueueMode, setAutoQueueModeState] = useState(false);
   const selectorRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const projectItemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const selected = projects?.find((p) => p.id === selectedId);
+  const { data: projectTaskOverviews } = useProjectTaskOverviews(dropdownOpen);
+  const overviewByProjectId = useMemo(
+    () => new Map((projectTaskOverviews ?? []).map((overview) => [overview.projectId, overview])),
+    [projectTaskOverviews],
+  );
+  const filteredProjects = useMemo(() => {
+    const normalizedQuery = projectQuery.trim().toLocaleLowerCase();
+    const matchingProjects = normalizedQuery
+      ? (projects ?? []).filter((project) =>
+          `${project.name} ${project.rootPath}`.toLocaleLowerCase().includes(normalizedQuery),
+        )
+      : (projects ?? []);
+    return sortProjects(matchingProjects, projectSort, overviewByProjectId);
+  }, [overviewByProjectId, projectQuery, projectSort, projects]);
+  const projectSections = useMemo(() => {
+    const pinned = filteredProjects.filter((project) => project.pinnedAt != null);
+    const unpinned = filteredProjects.filter((project) => project.pinnedAt == null);
+    const grouped = new Map<string, Project[]>();
+    const ungrouped: Project[] = [];
+    for (const project of unpinned) {
+      const normalizedGroup = project.groupName?.trim();
+      if (!normalizedGroup) {
+        ungrouped.push(project);
+        continue;
+      }
+      const group = grouped.get(normalizedGroup) ?? [];
+      group.push(project);
+      grouped.set(normalizedGroup, group);
+    }
+
+    return [
+      ...(pinned.length > 0 ? [{ label: "Pinned", projects: pinned }] : []),
+      ...[...grouped.entries()]
+        .sort(([left], [right]) => left.localeCompare(right, undefined, { sensitivity: "base" }))
+        .map(([label, groupProjects]) => ({ label, projects: groupProjects })),
+      ...(ungrouped.length > 0
+        ? [{ label: grouped.size > 0 ? "Other" : null, projects: ungrouped }]
+        : []),
+    ];
+  }, [filteredProjects]);
+  const projectIndexById = useMemo(
+    () => new Map(filteredProjects.map((project, index) => [project.id, index])),
+    [filteredProjects],
+  );
+  const boundedSelectedProjectIndex =
+    filteredProjects.length === 0 ? 0 : Math.min(selectedProjectIndex, filteredProjects.length - 1);
   const isEditDialogOpen = dialogOpen && dialogMode === "edit" && !!editingId;
   const { data: mcpData, isLoading: isMcpLoading } = useQuery({
     queryKey: ["project-mcp", editingId],
@@ -73,6 +132,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
     setEditingId(null);
     setName("");
     setRootPath("");
+    setGroupName("");
     setPlannerMaxBudgetUsd("");
     setPlanCheckerMaxBudgetUsd("");
     setImplementerMaxBudgetUsd("");
@@ -80,6 +140,8 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
     setParallelEnabled(false);
     setAutoQueueModeState(false);
     setDropdownOpen(false);
+    setProjectQuery("");
+    setSelectedProjectIndex(0);
     setDialogOpen(true);
   };
 
@@ -89,6 +151,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
     setEditingId(p.id);
     setName(p.name);
     setRootPath(p.rootPath);
+    setGroupName(p.groupName ?? "");
     setPlannerMaxBudgetUsd(p.plannerMaxBudgetUsd == null ? "" : String(p.plannerMaxBudgetUsd));
     setPlanCheckerMaxBudgetUsd(
       p.planCheckerMaxBudgetUsd == null ? "" : String(p.planCheckerMaxBudgetUsd),
@@ -102,6 +165,8 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
     setParallelEnabled(p.parallelEnabled ?? false);
     setAutoQueueModeState(p.autoQueueMode ?? false);
     setDropdownOpen(false);
+    setProjectQuery("");
+    setSelectedProjectIndex(0);
     setDialogOpen(true);
   };
 
@@ -113,6 +178,16 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
         if (selectedId === p.id) onDeselect();
       },
     });
+  };
+
+  const handlePin = (project: Project, event: React.MouseEvent) => {
+    event.stopPropagation();
+    updateOrganization.mutate(
+      { id: project.id, input: { pinned: project.pinnedAt == null } },
+      {
+        onError: (error) => showMutationError(error, "Failed to update project pin"),
+      },
+    );
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -190,6 +265,20 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
         },
         {
           onSuccess: (project) => {
+            const normalizedGroupName = groupName.trim() || null;
+            const groupChanged = normalizedGroupName !== (editingProject?.groupName ?? null);
+            if (groupChanged) {
+              updateOrganization.mutate(
+                { id: editingId, input: { groupName: normalizedGroupName } },
+                {
+                  onSuccess: (organizedProject) => {
+                    if (selectedId === editingId) onSelect(organizedProject);
+                  },
+                  onError: (error) =>
+                    showMutationError(error, "Project saved, but its group could not be updated"),
+                },
+              );
+            }
             if (autoQueueMode !== previousAutoQueue) {
               setAutoQueue.mutate(
                 { id: editingId, enabled: autoQueueMode },
@@ -209,19 +298,70 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
     }
   };
 
-  const isPending = createProject.isPending || updateProject.isPending;
+  const isPending =
+    createProject.isPending || updateProject.isPending || updateOrganization.isPending;
 
-  const closeDropdown = useCallback(() => setDropdownOpen(false), []);
+  const closeDropdown = useCallback(() => {
+    setDropdownOpen(false);
+    setProjectQuery("");
+    setSelectedProjectIndex(0);
+  }, []);
   useOutsideClick(selectorRef, closeDropdown, dropdownOpen);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const frame = requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [dropdownOpen]);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    projectItemRefs.current[boundedSelectedProjectIndex]?.scrollIntoView({ block: "nearest" });
+  }, [boundedSelectedProjectIndex, dropdownOpen]);
+
+  const selectProject = (project: Project) => {
+    onSelect(project);
+    closeDropdown();
+  };
+
+  const handleProjectSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeDropdown();
+      triggerRef.current?.focus();
+      return;
+    }
+    if (filteredProjects.length === 0) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setSelectedProjectIndex((boundedSelectedProjectIndex + 1) % filteredProjects.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSelectedProjectIndex(
+        (boundedSelectedProjectIndex - 1 + filteredProjects.length) % filteredProjects.length,
+      );
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const project = filteredProjects[boundedSelectedProjectIndex];
+      if (project) selectProject(project);
+    }
+  };
 
   return (
     <>
       <div className="relative" ref={selectorRef}>
         <Button
+          ref={triggerRef}
           variant="outline"
           size="sm"
           className="gap-2 border-border bg-card/80 hover:bg-accent/60"
-          onClick={() => setDropdownOpen(!dropdownOpen)}
+          aria-expanded={dropdownOpen}
+          aria-haspopup="listbox"
+          onClick={() => {
+            if (dropdownOpen) closeDropdown();
+            else setDropdownOpen(true);
+          }}
         >
           <FolderOpen className="h-4 w-4" />
           {selected?.name ?? "Select project"}
@@ -229,49 +369,116 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
         </Button>
 
         {dropdownOpen && (
-          <div className="absolute left-0 top-full z-dropdown mt-2 min-w-[280px] border border-border bg-popover p-1.5">
-            {projects?.map((p) => (
-              <div
-                key={p.id}
-                className={`group flex items-center gap-1 text-sm hover:bg-accent ${
-                  p.id === selectedId ? "bg-accent" : ""
-                }`}
-              >
-                <ListButton
-                  active={p.id === selectedId}
-                  className="flex-1 flex-col items-start px-3 py-2"
-                  onClick={() => {
-                    onSelect(p);
-                    setDropdownOpen(false);
-                  }}
-                >
-                  <div className="font-medium tracking-tight">{p.name}</div>
-                  <div className="truncate text-2xs text-muted-foreground">{p.rootPath}</div>
-                </ListButton>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 border-0 opacity-0 group-hover:opacity-70 hover:!opacity-100"
-                  onClick={(e) => openEdit(p, e)}
-                  title="Edit"
-                >
-                  <Pencil className="h-3 w-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 border-0 text-destructive opacity-0 group-hover:opacity-70 hover:!opacity-100"
-                  onClick={(e) => handleDelete(p, e)}
-                  title="Delete"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
+          <div className="absolute left-0 top-full z-dropdown mt-2 w-[360px] max-w-[calc(100vw-2rem)] border border-border bg-popover p-1.5 text-popover-foreground">
+            <div className="space-y-1.5 p-1">
+              <Input
+                ref={searchInputRef}
+                value={projectQuery}
+                onChange={(event) => {
+                  setProjectQuery(event.target.value);
+                  setSelectedProjectIndex(0);
+                }}
+                onKeyDown={handleProjectSearchKeyDown}
+                placeholder="Search projects or paths..."
+                aria-label="Search projects"
+                inputSize="sm"
+              />
+              <Select
+                value={projectSort}
+                options={[...PROJECT_SORT_OPTIONS]}
+                onChange={(event) => {
+                  setProjectSort(event.target.value as ProjectSort);
+                  setSelectedProjectIndex(0);
+                }}
+                selectSize="sm"
+                className="w-full"
+              />
+            </div>
 
-            {projects?.length === 0 && (
-              <div className="px-3 py-2 text-sm text-muted-foreground">// no projects yet</div>
-            )}
+            <ScrollableContainer maxHeight="max-h-[60vh]" className="mt-1">
+              <div role="listbox">
+                {projectSections.map((section) => (
+                  <div key={section.label ?? "projects"}>
+                    {section.label && (
+                      <div className="px-3 pb-1 pt-2 text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {section.label}
+                      </div>
+                    )}
+                    {section.projects.map((project) => {
+                      const projectIndex = projectIndexById.get(project.id) ?? 0;
+                      const isKeyboardSelected = projectIndex === boundedSelectedProjectIndex;
+                      return (
+                        <div
+                          key={project.id}
+                          className={`group flex items-center gap-1 text-sm hover:bg-accent ${
+                            project.id === selectedId ? "bg-accent" : ""
+                          }`}
+                        >
+                          <ListButton
+                            ref={(element) => {
+                              projectItemRefs.current[projectIndex] = element;
+                            }}
+                            active={project.id === selectedId || isKeyboardSelected}
+                            className="min-w-0 flex-1 flex-col items-start px-3 py-2"
+                            onClick={() => selectProject(project)}
+                            role="option"
+                            aria-selected={isKeyboardSelected}
+                          >
+                            <div className="flex w-full items-center gap-1.5">
+                              {project.pinnedAt && <Pin className="h-3 w-3 shrink-0" />}
+                              <span className="truncate font-medium tracking-tight">
+                                {project.name}
+                              </span>
+                            </div>
+                            <div className="w-full truncate text-2xs text-muted-foreground">
+                              {project.rootPath}
+                            </div>
+                          </ListButton>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-6 w-6 border-0 hover:!opacity-100 ${
+                              project.pinnedAt
+                                ? "opacity-70"
+                                : "opacity-0 group-hover:opacity-70 group-focus-within:opacity-70"
+                            }`}
+                            onClick={(event) => handlePin(project, event)}
+                            title={project.pinnedAt ? "Unpin" : "Pin"}
+                            aria-pressed={project.pinnedAt != null}
+                          >
+                            <Pin className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 border-0 opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 hover:!opacity-100"
+                            onClick={(event) => openEdit(project, event)}
+                            title="Edit"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 border-0 text-destructive opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 hover:!opacity-100"
+                            onClick={(event) => handleDelete(project, event)}
+                            title="Delete"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+
+                {filteredProjects.length === 0 && (
+                  <div className="px-3 py-3 text-sm text-muted-foreground">
+                    {projects?.length === 0 ? "// no projects yet" : "No matching projects"}
+                  </div>
+                )}
+              </div>
+            </ScrollableContainer>
 
             <div className="mt-1 border-t border-border pt-1">
               <ListButton onClick={openCreate} className="gap-2 px-3 py-2">
@@ -312,6 +519,20 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                 PROJECTS_DIR are saved as the mounted container path.
               </p>
             </div>
+            {dialogMode === "edit" && (
+              <div>
+                <label className="text-sm font-medium">Group</label>
+                <Input
+                  placeholder="Optional product or team"
+                  value={groupName}
+                  maxLength={100}
+                  onChange={(event) => setGroupName(event.target.value)}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Projects with the same group appear together in the picker.
+                </p>
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium">Planner Budget (USD)</label>
               <Input

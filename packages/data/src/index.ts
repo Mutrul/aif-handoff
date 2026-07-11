@@ -62,6 +62,7 @@ import {
   type TaskListItem,
   type TaskStatus,
   type ProjectTaskOverview,
+  type UpdateProjectOrganizationInput,
   resolveRuntimeLimitFutureHint,
   sanitizeRuntimeLimitSnapshotForExposure,
   selectViolatedWindowForExactThreshold,
@@ -1307,7 +1308,16 @@ export function getAppDefaultRuntimeProfileId(
 }
 
 export function listProjects(): ProjectRow[] {
-  return getDb().select().from(projects).all();
+  return getDb()
+    .select()
+    .from(projects)
+    .orderBy(
+      sql`case when ${projects.pinnedAt} is null then 1 else 0 end`,
+      asc(projects.pinnedAt),
+      sql`${projects.name} collate nocase`,
+      asc(projects.id),
+    )
+    .all();
 }
 
 function emptyStatusCounts(): Record<TaskStatus, number> {
@@ -1329,6 +1339,7 @@ function emptyStatusPreviews(): ProjectTaskOverview["statusPreviews"] {
 function emptyProjectTaskOverview(projectId: string): ProjectTaskOverview {
   return {
     projectId,
+    lastActivityAt: null,
     totalTasks: 0,
     completedTasks: 0,
     verifiedTasks: 0,
@@ -1380,6 +1391,7 @@ export function listProjectTaskOverviews(previewLimit = 3): ProjectTaskOverview[
       totalTokenOutput: sql<number>`coalesce(sum(${tasks.tokenOutput}), 0)`,
       totalTokenTotal: sql<number>`coalesce(sum(${tasks.tokenTotal}), 0)`,
       totalCostUsd: sql<number>`coalesce(sum(${tasks.costUsd}), 0)`,
+      lastActivityAt: max(tasks.updatedAt),
     })
     .from(tasks)
     .groupBy(tasks.projectId, tasks.status)
@@ -1400,6 +1412,12 @@ export function listProjectTaskOverviews(previewLimit = 3): ProjectTaskOverview[
     overview.totalTokenOutput += toFiniteNumber(row.totalTokenOutput);
     overview.totalTokenTotal += toFiniteNumber(row.totalTokenTotal);
     overview.totalCostUsd += toFiniteNumber(row.totalCostUsd);
+    if (
+      row.lastActivityAt &&
+      (!overview.lastActivityAt || row.lastActivityAt > overview.lastActivityAt)
+    ) {
+      overview.lastActivityAt = row.lastActivityAt;
+    }
 
     if (status === "done" || status === "verified") {
       overview.completedTasks += taskCount;
@@ -1563,6 +1581,38 @@ export function updateProject(
     .where(eq(projects.id, id))
     .run();
   return findProjectById(id);
+}
+
+export function updateProjectOrganization(
+  id: string,
+  input: UpdateProjectOrganizationInput,
+): ProjectRow | undefined {
+  const existing = findProjectById(id);
+  if (!existing) return undefined;
+
+  const patch: Partial<ProjectRow> = { updatedAt: new Date().toISOString() };
+  if (input.pinned !== undefined) {
+    patch.pinnedAt = input.pinned ? (existing.pinnedAt ?? new Date().toISOString()) : null;
+  }
+  if (input.groupName !== undefined) {
+    patch.groupName = input.groupName?.trim() || null;
+  }
+
+  log.debug(
+    {
+      projectId: id,
+      pinned: patch.pinnedAt != null,
+      groupName: patch.groupName,
+    },
+    "[FIX:147] Updating project organization",
+  );
+  getDb().update(projects).set(patch).where(eq(projects.id, id)).run();
+  const updated = findProjectById(id);
+  log.debug(
+    { projectId: id, updated: updated != null },
+    "[FIX:147] Project organization updated",
+  );
+  return updated;
 }
 
 export function deleteProject(id: string): void {

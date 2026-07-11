@@ -10,6 +10,7 @@ import type {
   Project,
   ProjectTaskOverview,
   CreateProjectInput,
+  UpdateProjectOrganizationInput,
   ChatRequest,
   ChatSession,
   CreateChatSessionInput,
@@ -312,6 +313,14 @@ export const api = {
     console.debug("[api] PUT /projects/%s", id, input);
     return request<Project>(`/projects/${id}`, {
       method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+
+  updateProjectOrganization(id: string, input: UpdateProjectOrganizationInput): Promise<Project> {
+    console.debug("[api] PATCH /projects/%s/organization", id, input);
+    return request<Project>(`/projects/${encodeURIComponent(id)}/organization`, {
+      method: "PATCH",
       body: JSON.stringify(input),
     });
   },

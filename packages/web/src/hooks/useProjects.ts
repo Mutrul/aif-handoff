@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import type { Project, CreateProjectInput, ProjectTaskOverview } from "@aif/shared/browser";
+import type {
+  Project,
+  CreateProjectInput,
+  ProjectTaskOverview,
+  UpdateProjectOrganizationInput,
+} from "@aif/shared/browser";
 import { api, ApiError } from "../lib/api.js";
 import { invalidateProjectWarmupQueries } from "./useProjectWarmup.js";
 
@@ -62,6 +67,17 @@ export function useUpdateProject() {
       queryClient.invalidateQueries({ queryKey: ["effectiveChatRuntime"] });
       queryClient.invalidateQueries({ queryKey: ["effectiveTaskRuntime"] });
       invalidateProjectWarmupQueries(queryClient, id);
+    },
+  });
+}
+
+export function useUpdateProjectOrganization() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateProjectOrganizationInput }) =>
+      api.updateProjectOrganization(id, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
   });
 }

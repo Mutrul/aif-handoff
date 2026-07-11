@@ -10,6 +10,7 @@ export {
   type AutoReviewFinding,
   type AutoReviewState,
   type Project,
+  type UpdateProjectOrganizationInput,
   type CreateProjectInput,
   type AppSettings,
   type UpdateAppSettingsInput,
