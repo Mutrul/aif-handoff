@@ -1598,39 +1598,83 @@ export function findCoordinatorTaskCandidate(stage: CoordinatorStage): TaskRow |
   return findCoordinatorTaskCandidates(stage, 1)[0];
 }
 
-export function findCoordinatorTaskCandidates(stage: CoordinatorStage, limit: number): TaskRow[] {
-  const stageFilter =
-    stage === "implementer"
-      ? or(
-          eq(tasks.status, "implementing"),
-          and(eq(tasks.status, "plan_ready"), eq(tasks.autoMode, true)),
-        )
-      : stage === "improver"
-        ? inArray(tasks.status, ["improve"])
+function coordinatorStageFilter(stage: CoordinatorStage) {
+  return stage === "implementer"
+    ? or(
+        eq(tasks.status, "implementing"),
+        and(eq(tasks.status, "plan_ready"), eq(tasks.autoMode, true)),
+      )
+    : stage === "improver"
+      ? inArray(tasks.status, ["improve"])
       : stage === "plan-checker"
         ? and(eq(tasks.status, "plan_ready"), eq(tasks.autoMode, true))
-      : stage === "planner"
-        ? inArray(tasks.status, ["planning"])
-        : stage === "verifier"
-          ? inArray(tasks.status, ["verify"])
-          : inArray(tasks.status, ["review"]);
+        : stage === "planner"
+          ? inArray(tasks.status, ["planning"])
+          : stage === "verifier"
+            ? inArray(tasks.status, ["verify"])
+            : inArray(tasks.status, ["review"]);
+}
 
+function coordinatorAnyStageFilter() {
+  return or(
+    inArray(tasks.status, ["planning", "improve", "implementing", "verify", "review"]),
+    and(eq(tasks.status, "plan_ready"), eq(tasks.autoMode, true)),
+  );
+}
+
+function unlockedCoordinatorTaskFilter(nowIso: string) {
+  return and(
+    eq(tasks.paused, false),
+    or(sql`${tasks.lockedBy} IS NULL`, lte(tasks.lockedUntil, nowIso)),
+  );
+}
+
+export function findCoordinatorTaskCandidates(stage: CoordinatorStage, limit: number): TaskRow[] {
   const nowIso = new Date().toISOString();
 
   return getDb()
     .select()
     .from(tasks)
-    .where(and(
-      stageFilter,
-      eq(tasks.paused, false),
-      or(
-        sql`${tasks.lockedBy} IS NULL`,
-        lte(tasks.lockedUntil, nowIso),
-      ),
-    ))
+    .where(and(coordinatorStageFilter(stage), unlockedCoordinatorTaskFilter(nowIso)))
     .orderBy(asc(tasks.position), asc(tasks.createdAt))
     .limit(limit)
     .all();
+}
+
+export function findCoordinatorTaskCandidatesForProject(
+  projectId: string,
+  stage: CoordinatorStage,
+  limit: number,
+): TaskRow[] {
+  const nowIso = new Date().toISOString();
+
+  return getDb()
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.projectId, projectId),
+        coordinatorStageFilter(stage),
+        unlockedCoordinatorTaskFilter(nowIso),
+      ),
+    )
+    .orderBy(asc(tasks.position), asc(tasks.createdAt))
+    .limit(limit)
+    .all();
+}
+
+export function listCoordinatorActionableProjectIds(limit: number): string[] {
+  const nowIso = new Date().toISOString();
+
+  return getDb()
+    .select({ projectId: tasks.projectId })
+    .from(tasks)
+    .where(and(coordinatorAnyStageFilter(), unlockedCoordinatorTaskFilter(nowIso)))
+    .groupBy(tasks.projectId)
+    .orderBy(min(tasks.createdAt), asc(tasks.projectId))
+    .limit(limit)
+    .all()
+    .map((row) => row.projectId);
 }
 
 /** Atomically claim a task for processing. Returns true if claim succeeded. */

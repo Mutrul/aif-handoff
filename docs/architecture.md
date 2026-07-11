@@ -104,7 +104,7 @@ Short-lived in-memory caches exist only for dedupe/throttling repeated identical
 
 The coordinator (`packages/agent/src/coordinator.ts`) uses a dual-trigger model: it polls via `node-cron` every 30 seconds as a fallback and also reacts to real-time events from the API WebSocket (task creation, moves, and explicit `agent:wake` signals). Duplicate wakes are debounced. If the WebSocket is unavailable, the coordinator falls back to polling-only mode.
 
-The coordinator supports **parallel task execution** (experimental, per-project). When a project has "Parallel Execution" enabled in settings, up to `COORDINATOR_MAX_CONCURRENT_TASKS` (default 3) tasks per stage run concurrently via `Promise.allSettled`. This value also serves as the global cap on total concurrent Claude processes across all stages and projects. Non-parallel projects always process 1 task at a time. Tasks are atomically claimed (`lockedBy`/`lockedUntil` columns) with lock duration tied to the stage timeout; heartbeats renew the lock periodically. Stale claims (expired TTL or dead heartbeat) are auto-released. On shutdown, active locks are released immediately.
+The coordinator supports **parallel task execution** (experimental, per-project). It first selects up to `COORDINATOR_MAX_CONCURRENT_PROJECTS` (default 4) independent project lanes and runs those lanes concurrently, while `COORDINATOR_MAX_CONCURRENT_TASKS` (default 12) remains a global safety ceiling across all lanes. Within one lane, pipeline stages still drain sequentially to preserve project-local ordering. When a project has "Parallel Execution" enabled in settings, up to `COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT` (default 3) tasks per stage run concurrently via `Promise.allSettled`; non-parallel projects always process 1 task at a time. Tasks are atomically claimed (`lockedBy`/`lockedUntil` columns) with lock duration tied to the stage timeout; heartbeats renew the lock periodically. Stale claims (expired TTL or dead heartbeat) are auto-released. On shutdown, active locks are released immediately.
 
 It delegates workflow stages to `.claude/agents/` definitions, but actual execution transport/model/session behavior is adapter-owned through `@aif/runtime`:
 
@@ -264,7 +264,7 @@ which makes ordinary backlog creation FIFO instead of LIFO.
   pipeline status, not by lock — so transitions between stages do not open a
   window for early advance.
 - **Parallel project** (`parallelEnabled = true`): pool depth =
-  `COORDINATOR_MAX_CONCURRENT_TASKS`. Auto-queue keeps that many tasks in
+  `COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT`. Auto-queue keeps that many tasks in
   flight, advancing as soon as room frees up. For projects with
   `git.create_branches=true`, this parallel branch-isolated path is available
   only when `AIF_TASK_WORKTREES_ENABLED=true`; otherwise the project remains
@@ -276,7 +276,7 @@ which makes ordinary backlog creation FIFO instead of LIFO.
 
 The advance step:
 
-1. Compute `limit = parallelEnabled ? COORDINATOR_MAX_CONCURRENT_TASKS : 1`,
+1. Compute `limit = parallelEnabled ? COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT : 1`,
    then collapse it to `1` when branch isolation would use the shared project
    root.
 2. Read `active = countActivePipelineTasksForProject(project)` — counts tasks

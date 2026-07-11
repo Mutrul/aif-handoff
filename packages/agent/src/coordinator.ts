@@ -3,7 +3,8 @@ import {
   clearTaskRuntimeLimitSnapshot,
   blockTaskForRuntimeGateIfEligible,
   evaluateRuntimeLimitGate,
-  findCoordinatorTaskCandidates,
+  findCoordinatorTaskCandidatesForProject,
+  listCoordinatorActionableProjectIds,
   findProjectById,
   hasActiveLockedTaskForProject,
   claimTask,
@@ -127,20 +128,22 @@ const PIPELINE: StatusTransition[] = [
 class StageSemaphore {
   private counts = new Map<string, number>();
 
-  tryAcquire(stage: string, max: number): boolean {
-    const current = this.counts.get(stage) ?? 0;
-    if (current >= max) return false;
-    this.counts.set(stage, current + 1);
+  tryAcquire(key: string, keyMax: number, globalMax: number): boolean {
+    const current = this.counts.get(key) ?? 0;
+    if (current >= keyMax || this.totalActive() >= globalMax) return false;
+    this.counts.set(key, current + 1);
     return true;
   }
 
-  release(stage: string): void {
-    const current = this.counts.get(stage) ?? 0;
-    this.counts.set(stage, Math.max(0, current - 1));
+  release(key: string): void {
+    const current = this.counts.get(key) ?? 0;
+    this.counts.set(key, Math.max(0, current - 1));
   }
 
-  available(stage: string, max: number): number {
-    return max - (this.counts.get(stage) ?? 0);
+  available(key: string, keyMax: number, globalMax: number): number {
+    const keyAvailable = keyMax - (this.counts.get(key) ?? 0);
+    const globalAvailable = globalMax - this.totalActive();
+    return Math.max(0, Math.min(keyAvailable, globalAvailable));
   }
 
   totalActive(): number {
@@ -672,7 +675,7 @@ export function processDueScheduledTasks(): number {
  * For each project with `autoQueueMode = true`, fill the pipeline up to the
  * project's pool depth by advancing backlog tasks (lowest `position` first)
  * into `planning`. Pool depth is `1` for sequential projects and
- * `COORDINATOR_MAX_CONCURRENT_TASKS` for parallel projects, so the same
+ * `COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT` for parallel projects, so the same
  * code path covers both:
  *   - non-parallel project: strict sequential — next task starts only after
  *     the previous reaches a terminal status (done/verified)
@@ -712,7 +715,7 @@ export function processAutoQueueAdvance(): number {
     }
     const limit =
       project.parallelEnabled && !usesSharedBranchIsolation
-        ? env.COORDINATOR_MAX_CONCURRENT_TASKS
+        ? env.COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT
         : 1;
     let active = countActivePipelineTasksForProject(project.id);
 
@@ -827,7 +830,8 @@ export async function pollAndProcess(): Promise<void> {
   processDueScheduledTasks();
   processAutoQueueAdvance();
 
-  const globalMax = env.COORDINATOR_MAX_CONCURRENT_TASKS;
+  const maxProjectLanes = env.COORDINATOR_MAX_CONCURRENT_PROJECTS;
+  const globalMaxTasks = env.COORDINATOR_MAX_CONCURRENT_TASKS;
 
   // Track tasks that failed in this cycle — prevent re-picking in downstream stages
   const failedInCycle = new Set<string>();
@@ -849,7 +853,10 @@ export async function pollAndProcess(): Promise<void> {
         : false;
       cached = {
         parallel: configuredParallel && !usesSharedBranchIsolation,
-        max: configuredParallel && !usesSharedBranchIsolation ? globalMax : 1,
+        max:
+          configuredParallel && !usesSharedBranchIsolation
+            ? env.COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT
+            : 1,
       };
       if (configuredParallel && usesSharedBranchIsolation) {
         log.warn(
@@ -862,143 +869,147 @@ export async function pollAndProcess(): Promise<void> {
     return cached;
   }
 
-  for (const stage of PIPELINE) {
-    // Global cap: total active tasks across all stages (prevents resource exhaustion
-    // when multiple poll cycles overlap from cron + wake)
-    const totalActive = stageSemaphore.totalActive();
-    if (totalActive >= globalMax) {
-      log.debug(
-        { stage: stage.label, totalActive, globalMax },
-        "Global task limit reached, skipping stage",
-      );
-      continue;
-    }
+  const projectIds = listCoordinatorActionableProjectIds(maxProjectLanes);
+  if (projectIds.length === 0) {
+    log.debug("No actionable project lanes");
+    return;
+  }
 
-    // Per-project spawn count scoped to this stage (stages are sequential via allSettled)
-    const projectSpawnCount = new Map<string, number>();
+  log.debug(
+    {
+      projectIds,
+      maxProjectLanes,
+      globalMaxTasks,
+      activeTasks: stageSemaphore.totalActive(),
+    },
+    "Coordinator project lanes selected",
+  );
 
-    const availableInStage = stageSemaphore.available(stage.label, globalMax);
-    const availableGlobal = globalMax - totalActive;
-    const available = Math.min(availableInStage, availableGlobal);
-    if (available <= 0) {
-      log.debug({ stage: stage.label }, "Stage at capacity, skipping");
-      continue;
-    }
-
-    const candidateWindow = Math.min(Math.max(available * 5, available), 50);
-    const candidates = findCoordinatorTaskCandidates(stage.label, candidateWindow).filter(
-      (t) => !failedInCycle.has(t.id),
-    );
-
-    if (candidates.length === 0) {
-      log.debug({ stage: stage.label }, "No tasks to process");
-      continue;
-    }
-
-    log.debug(
-      {
-        stage: stage.label,
-        candidateCount: candidates.length,
-        candidateWindow,
-        available,
-      },
-      "Task candidates selected",
-    );
-
-    const spawned: Promise<void>[] = [];
-
-    for (const task of candidates) {
-      // Per-project concurrency: non-parallel projects limited to 1 task at a time
-      const concurrency = resolveProjectConcurrency(task.projectId);
+  async function processProjectLane(projectId: string): Promise<void> {
+    for (const stage of PIPELINE) {
+      const concurrency = resolveProjectConcurrency(projectId);
       const parallel = concurrency.parallel;
       const projectMax = concurrency.max;
-      const projectCount = projectSpawnCount.get(task.projectId) ?? 0;
-      if (projectCount >= projectMax) {
-        log.debug(
-          { taskId: task.id, projectId: task.projectId },
-          "Project at capacity, skipping task",
-        );
+      const stageKey = `${projectId}:${stage.label}`;
+      const available = stageSemaphore.available(stageKey, projectMax, globalMaxTasks);
+      if (available <= 0) {
+        log.debug({ stage: stage.label, projectId }, "Project stage at capacity, skipping");
         continue;
       }
 
-      // Cross-cycle guard: for non-parallel projects, check DB for any active lock
-      // (another concurrent poll cycle may have already claimed a task for this project)
-      if (!parallel && hasActiveLockedTaskForProject(task.projectId)) {
-        log.debug(
-          { taskId: task.id, projectId: task.projectId },
-          "Non-parallel project has active lock from another cycle, skipping",
-        );
+      const candidateWindow = Math.min(Math.max(available * 5, available), 50);
+      const candidates = findCoordinatorTaskCandidatesForProject(
+        projectId,
+        stage.label,
+        candidateWindow,
+      ).filter((t) => !failedInCycle.has(t.id));
+
+      if (candidates.length === 0) {
+        log.debug({ stage: stage.label, projectId }, "No tasks to process in project lane");
         continue;
       }
-
-      const runtimeSelection = resolveEffectiveRuntimeProfile({
-        taskId: task.id,
-        projectId: task.projectId,
-        mode: runtimeProfileModeForStage(stage.label),
-      });
-      const gateDecision = evaluateRuntimeLimitGate(runtimeSelection.profile);
-      if (gateDecision.blocked) {
-        log.debug(
-          {
-            taskId: task.id,
-            stage: stage.label,
-            projectId: task.projectId,
-            runtimeProfileId: gateDecision.runtimeProfileId,
-            runtimeSelectionSource: runtimeSelection.source,
-            gateReason: gateDecision.reason,
-            limitPrecision: gateDecision.snapshot?.precision ?? null,
-          },
-          "Task candidate blocked by proactive runtime gate",
-        );
-        proactivelyBlockTaskForRuntimeGate(task, stage.label, runtimeSelection, gateDecision);
-        continue;
-      }
-
-      if (!claimTask(task.id, COORDINATOR_ID, CLAIM_LOCK_DURATION_MS)) {
-        log.debug({ taskId: task.id, stage: stage.label }, "Task claim failed (already claimed)");
-        continue;
-      }
-
-      if (
-        stageSemaphore.totalActive() >= globalMax ||
-        !stageSemaphore.tryAcquire(stage.label, globalMax)
-      ) {
-        releaseTaskClaim(task.id);
-        log.debug({ stage: stage.label }, "Semaphore full after claim");
-        break;
-      }
-
-      projectSpawnCount.set(task.projectId, projectCount + 1);
 
       log.debug(
-        { stage: stage.label, taskId: task.id, candidateStatus: task.status, parallel },
-        "Task claimed for processing",
+        {
+          stage: stage.label,
+          projectId,
+          candidateCount: candidates.length,
+          candidateWindow,
+          available,
+          projectMax,
+          globalMaxTasks,
+        },
+        "Project lane task candidates selected",
       );
 
-      const taskPromise = processOneTask(task, stage)
-        .then((success) => {
-          if (!success) failedInCycle.add(task.id);
-        })
-        .catch((err) => {
-          failedInCycle.add(task.id);
-          log.error(
-            { taskId: task.id, stage: stage.label, err },
-            "Unexpected error in task processing",
+      const spawned: Promise<void>[] = [];
+
+      for (const task of candidates) {
+        // Per-project concurrency: non-parallel projects limited to 1 task at a time
+        if (spawned.length >= projectMax) {
+          log.debug(
+            { taskId: task.id, projectId: task.projectId, projectMax },
+            "Project at capacity, skipping task",
           );
-        })
-        .finally(() => {
-          stageSemaphore.release(stage.label);
-          releaseTaskClaim(task.id);
+          continue;
+        }
+
+        // Cross-cycle guard: for non-parallel projects, check DB for any active lock
+        // (another concurrent poll cycle may have already claimed a task for this project)
+        if (!parallel && hasActiveLockedTaskForProject(task.projectId)) {
+          log.debug(
+            { taskId: task.id, projectId: task.projectId },
+            "Non-parallel project has active lock from another cycle, skipping",
+          );
+          continue;
+        }
+
+        const runtimeSelection = resolveEffectiveRuntimeProfile({
+          taskId: task.id,
+          projectId: task.projectId,
+          mode: runtimeProfileModeForStage(stage.label),
         });
+        const gateDecision = evaluateRuntimeLimitGate(runtimeSelection.profile);
+        if (gateDecision.blocked) {
+          log.debug(
+            {
+              taskId: task.id,
+              stage: stage.label,
+              projectId: task.projectId,
+              runtimeProfileId: gateDecision.runtimeProfileId,
+              runtimeSelectionSource: runtimeSelection.source,
+              gateReason: gateDecision.reason,
+              limitPrecision: gateDecision.snapshot?.precision ?? null,
+            },
+            "Task candidate blocked by proactive runtime gate",
+          );
+          proactivelyBlockTaskForRuntimeGate(task, stage.label, runtimeSelection, gateDecision);
+          continue;
+        }
 
-      spawned.push(taskPromise);
-    }
+        if (!claimTask(task.id, COORDINATOR_ID, CLAIM_LOCK_DURATION_MS)) {
+          log.debug({ taskId: task.id, stage: stage.label }, "Task claim failed (already claimed)");
+          continue;
+        }
 
-    // Within-stage parallelism: await all tasks in this stage before moving to next
-    if (spawned.length > 0) {
-      await Promise.allSettled(spawned);
+        if (!stageSemaphore.tryAcquire(stageKey, projectMax, globalMaxTasks)) {
+          releaseTaskClaim(task.id);
+          log.debug({ stage: stage.label, projectId }, "Project stage semaphore full after claim");
+          break;
+        }
+
+        log.debug(
+          { stage: stage.label, taskId: task.id, candidateStatus: task.status, parallel },
+          "Task claimed for processing",
+        );
+
+        const taskPromise = processOneTask(task, stage)
+          .then((success) => {
+            if (!success) failedInCycle.add(task.id);
+          })
+          .catch((err) => {
+            failedInCycle.add(task.id);
+            log.error(
+              { taskId: task.id, stage: stage.label, err },
+              "Unexpected error in task processing",
+            );
+          })
+          .finally(() => {
+            stageSemaphore.release(stageKey);
+            releaseTaskClaim(task.id);
+          });
+
+        spawned.push(taskPromise);
+      }
+
+      // Within-project stage order is still sequential; independent project lanes run concurrently.
+      if (spawned.length > 0) {
+        await Promise.allSettled(spawned);
+      }
     }
   }
+
+  await Promise.allSettled(projectIds.map((projectId) => processProjectLane(projectId)));
 
   log.debug("Poll cycle complete");
 }

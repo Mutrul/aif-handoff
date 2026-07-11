@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { tasks, projects, runtimeProfiles, resetEnvCache } from "@aif/shared";
+import { tasks, projects, runtimeProfiles, getEnv, resetEnvCache } from "@aif/shared";
 import { createTestDb } from "@aif/shared/server";
 import { RuntimeExecutionError } from "@aif/runtime";
 import { eq } from "drizzle-orm";
@@ -1624,13 +1624,13 @@ describe("coordinator", () => {
     expect(proj!.parallelEnabled).toBe(true);
   });
 
-  it("should respect global max across stages (totalActive cap)", async () => {
+  it("should respect per-project task cap for a parallel-enabled project", async () => {
     const db = testDb.current;
     db.insert(projects)
       .values({ id: "cap-proj", name: "Cap", rootPath: "/tmp/cap", parallelEnabled: true })
       .run();
 
-    // Create 5 tasks in planning — globalMax is 3, so at most 3 should be picked
+    // Create 5 tasks in planning — per-project cap is 3, so at most 3 should be picked
     for (let i = 1; i <= 5; i++) {
       db.insert(tasks)
         .values({ id: `cap-task-${i}`, projectId: "cap-proj", title: `C${i}`, status: "planning" })
@@ -1642,9 +1642,127 @@ describe("coordinator", () => {
     // Semaphore should have released all slots after allSettled
     expect(getStageSemaphore().totalActive()).toBe(0);
 
-    // At most globalMax (3) planner calls should have been made
+    // At most the per-project cap (3) planner calls should have been made
     const plannerCalls = (runPlanner as any).mock.calls.length;
     expect(plannerCalls).toBeLessThanOrEqual(3);
     expect(plannerCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  it("should preserve the global task safety cap across project lanes", async () => {
+    const db = testDb.current;
+    const coordinatorEnv = getEnv();
+    const previousLimits = {
+      COORDINATOR_MAX_CONCURRENT_TASKS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS,
+      COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT:
+        coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_PROJECTS,
+    };
+
+    Object.assign(coordinatorEnv, {
+      COORDINATOR_MAX_CONCURRENT_TASKS: 2,
+      COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT: 2,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: 2,
+    });
+
+    try {
+      for (let projectIndex = 1; projectIndex <= 2; projectIndex++) {
+        const projectId = `global-cap-project-${projectIndex}`;
+        db.insert(projects)
+          .values({
+            id: projectId,
+            name: `Global cap ${projectIndex}`,
+            rootPath: `/tmp/global-cap-${projectIndex}`,
+            parallelEnabled: true,
+          })
+          .run();
+
+        for (let taskIndex = 1; taskIndex <= 2; taskIndex++) {
+          db.insert(tasks)
+            .values({
+              id: `global-cap-task-${projectIndex}-${taskIndex}`,
+              projectId,
+              title: `Task ${projectIndex}-${taskIndex}`,
+              status: "planning",
+            })
+            .run();
+        }
+      }
+
+      await pollAndProcess();
+
+      expect(runPlanner).toHaveBeenCalledTimes(2);
+      expect(getStageSemaphore().totalActive()).toBe(0);
+    } finally {
+      Object.assign(coordinatorEnv, previousLimits);
+    }
+  });
+
+  it("should not let a slow early stage in one project block review in another project", async () => {
+    const db = testDb.current;
+    db.insert(projects).values({ id: "slow-project", name: "Slow", rootPath: "/tmp/slow" }).run();
+    db.insert(projects)
+      .values({ id: "review-project", name: "Review", rootPath: "/tmp/review" })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "slow-planning-task",
+        projectId: "slow-project",
+        title: "Slow planning",
+        status: "planning",
+      })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "ready-review-task",
+        projectId: "review-project",
+        title: "Ready review",
+        status: "review",
+      })
+      .run();
+
+    let resolvePlanner: (() => void) | undefined;
+    vi.mocked(runPlanner).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePlanner = resolve;
+        }),
+    );
+
+    const pollPromise = pollAndProcess();
+    while (!resolvePlanner) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const reviewerStartedWhilePlannerPending = vi.mocked(runReviewer).mock.calls.length > 0;
+
+    resolvePlanner();
+    await pollPromise;
+
+    expect(reviewerStartedWhilePlannerPending).toBe(true);
+    expect(runReviewer).toHaveBeenCalledWith("ready-review-task", "/tmp/review");
+  });
+
+  it("should start one task in each independent project lane beyond the per-project task cap", async () => {
+    const db = testDb.current;
+    for (let i = 1; i <= 4; i++) {
+      db.insert(projects)
+        .values({ id: `lane-project-${i}`, name: `Lane ${i}`, rootPath: `/tmp/lane-${i}` })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: `lane-task-${i}`,
+          projectId: `lane-project-${i}`,
+          title: `Lane task ${i}`,
+          status: "planning",
+        })
+        .run();
+    }
+
+    await pollAndProcess();
+
+    for (let i = 1; i <= 4; i++) {
+      expect(runPlanner).toHaveBeenCalledWith(`lane-task-${i}`, `/tmp/lane-${i}`);
+    }
   });
 });
