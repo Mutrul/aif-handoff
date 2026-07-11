@@ -28,6 +28,7 @@ interface BoardProps {
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const RECENT_CUTOFF_REFERENCE_TS = Date.now();
+const TERMINAL_STATUSES = new Set<TaskStatus>(["done", "verified"]);
 
 const STATUS_ORDER = Object.fromEntries(
   ORDERED_STATUSES.map((status, idx) => [status, idx]),
@@ -129,7 +130,23 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
     }
 
     for (const status of ORDERED_STATUSES) {
-      grouped[status].sort((a, b) => a.position - b.position);
+      grouped[status].sort((a, b) => {
+        if (TERMINAL_STATUSES.has(status)) {
+          const updatedAtDiff = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+          if (Number.isFinite(updatedAtDiff) && updatedAtDiff !== 0) return updatedAtDiff;
+        }
+
+        const positionDiff = a.position - b.position;
+        return positionDiff !== 0 ? positionDiff : a.id.localeCompare(b.id);
+      });
+
+      if (import.meta.env.DEV && TERMINAL_STATUSES.has(status) && grouped[status].length > 0) {
+        console.debug("[FIX:148] Sorted terminal column by recency", {
+          status,
+          taskCount: grouped[status].length,
+          newestTaskId: grouped[status][0]?.id,
+        });
+      }
     }
 
     return grouped;

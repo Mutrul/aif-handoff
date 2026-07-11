@@ -3,6 +3,7 @@ import { STATUS_CONFIG } from "@aif/shared/browser";
 import { TaskCard } from "./TaskCard";
 import { AddTaskForm } from "./AddTaskForm";
 import { useReorderTask, useUpdateTask } from "@/hooks/useTasks";
+import { ScrollableContainer } from "@/components/ui/scrollable-container";
 
 interface ColumnProps {
   status: TaskStatus;
@@ -143,7 +144,10 @@ export function Column({
         </div>
       )}
 
-      <div className={`min-h-[100px] ${density === "compact" ? "space-y-1.5" : "space-y-2"}`}>
+      <ScrollableContainer
+        maxHeight="max-h-[calc(100vh-18rem)]"
+        className={`min-h-[100px] overscroll-contain pr-1 ${density === "compact" ? "space-y-1.5" : "space-y-2"}`}
+      >
         {tasks.map((task, idx) => {
           const reorderProps =
             status === "backlog"
@@ -172,7 +176,7 @@ export function Column({
             {hasActiveFilters ? "// no tasks for current filters" : "// no tasks"}
           </div>
         )}
-      </div>
+      </ScrollableContainer>
     </div>
   );
 }
