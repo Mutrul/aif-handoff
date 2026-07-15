@@ -105,6 +105,15 @@ export type CoordinatorStage =
   | "reviewer"
   | "verifier";
 
+export interface CoordinatorTaskClaimInput {
+  taskId: string;
+  expectedProjectId: string;
+  expectedStatus: TaskStatus;
+  expectedAutoMode?: boolean;
+  coordinatorId: string;
+  lockDurationMs: number;
+}
+
 export interface RuntimeWarmupScopeInput {
   projectId: string;
   runtimeProfileId?: string | null;
@@ -1698,6 +1707,34 @@ export function claimTask(taskId: string, coordinatorId: string, lockDurationMs:
 }
 
 /**
+ * Atomically claim a coordinator candidate only while its actionable snapshot
+ * still matches. Returns the fresh row captured by the successful UPDATE.
+ */
+export function claimCoordinatorTaskIfEligible(
+  input: CoordinatorTaskClaimInput,
+): TaskRow | undefined {
+  const nowIso = new Date().toISOString();
+  const lockedUntil = new Date(Date.now() + input.lockDurationMs).toISOString();
+  const conditions = [
+    eq(tasks.id, input.taskId),
+    eq(tasks.projectId, input.expectedProjectId),
+    eq(tasks.status, input.expectedStatus),
+    eq(tasks.paused, false),
+    or(sql`${tasks.lockedBy} IS NULL`, lte(tasks.lockedUntil, nowIso)),
+  ];
+  if (input.expectedAutoMode != null) {
+    conditions.push(eq(tasks.autoMode, input.expectedAutoMode));
+  }
+
+  return getDb()
+    .update(tasks)
+    .set({ lockedBy: input.coordinatorId, lockedUntil })
+    .where(and(...conditions))
+    .returning()
+    .get();
+}
+
+/**
  * Conditional proactive runtime gate block (CAS).
  * Applies the block only if the candidate row is still in the expected state
  * and remains available (unpaused + unlocked) at write time.
@@ -1871,11 +1908,15 @@ export function renewTaskClaim(taskId: string, coordinatorId: string, lockDurati
 }
 
 /** Release a task claim after processing completes. */
-export function releaseTaskClaim(taskId: string): void {
+export function releaseTaskClaim(taskId: string, coordinatorId?: string): void {
+  const conditions = [eq(tasks.id, taskId)];
+  if (coordinatorId != null) {
+    conditions.push(eq(tasks.lockedBy, coordinatorId));
+  }
   getDb()
     .update(tasks)
     .set({ lockedBy: null, lockedUntil: null })
-    .where(eq(tasks.id, taskId))
+    .where(and(...conditions))
     .run();
 }
 

@@ -7,7 +7,7 @@ import {
   listCoordinatorActionableProjectIds,
   findProjectById,
   hasActiveLockedTaskForProject,
-  claimTask,
+  claimCoordinatorTaskIfEligible,
   releaseTaskClaim,
   releaseStaleTaskClaims,
   updateTaskStatus as updateTaskStatusRow,
@@ -176,6 +176,10 @@ class StageSemaphore {
 
   trackedKeyCount(): number {
     return this.counts.size;
+  }
+
+  waitingCount(): number {
+    return this.waiters.length;
   }
 
   reset(): void {
@@ -410,6 +414,31 @@ function proactivelyBlockTaskForRuntimeGate(
     },
     "Blocked task before claim due to runtime limit gate",
   );
+}
+
+function blockCandidateIfRuntimeLimited(task: TaskRow, stage: StatusTransition): boolean {
+  const runtimeSelection = resolveEffectiveRuntimeProfile({
+    taskId: task.id,
+    projectId: task.projectId,
+    mode: runtimeProfileModeForStage(stage.label),
+  });
+  const gateDecision = evaluateRuntimeLimitGate(runtimeSelection.profile);
+  if (!gateDecision.blocked) return false;
+
+  log.debug(
+    {
+      taskId: task.id,
+      stage: stage.label,
+      projectId: task.projectId,
+      runtimeProfileId: gateDecision.runtimeProfileId,
+      runtimeSelectionSource: runtimeSelection.source,
+      gateReason: gateDecision.reason,
+      limitPrecision: gateDecision.snapshot?.precision ?? null,
+    },
+    "Task candidate blocked by proactive runtime gate",
+  );
+  proactivelyBlockTaskForRuntimeGate(task, stage.label, runtimeSelection, gateDecision);
+  return true;
 }
 
 // ── Single task processing ───────────────────────────────────
@@ -990,59 +1019,94 @@ async function runPollCycle(): Promise<void> {
           continue;
         }
 
-        const runtimeSelection = resolveEffectiveRuntimeProfile({
-          taskId: task.id,
-          projectId: task.projectId,
-          mode: runtimeProfileModeForStage(stage.label),
-        });
-        const gateDecision = evaluateRuntimeLimitGate(runtimeSelection.profile);
-        if (gateDecision.blocked) {
-          log.debug(
-            {
-              taskId: task.id,
-              stage: stage.label,
-              projectId: task.projectId,
-              runtimeProfileId: gateDecision.runtimeProfileId,
-              runtimeSelectionSource: runtimeSelection.source,
-              gateReason: gateDecision.reason,
-              limitPrecision: gateDecision.snapshot?.precision ?? null,
-            },
-            "Task candidate blocked by proactive runtime gate",
-          );
-          proactivelyBlockTaskForRuntimeGate(task, stage.label, runtimeSelection, gateDecision);
+        if (blockCandidateIfRuntimeLimited(task, stage)) {
           continue;
         }
 
         await stageSemaphore.acquire(stageKey, projectMax, globalMaxTasks);
+        let claimedTask: TaskRow | undefined;
+        let cleanupOwnedByTaskPromise = false;
 
-        if (!claimTask(task.id, COORDINATOR_ID, CLAIM_LOCK_DURATION_MS)) {
-          stageSemaphore.release(stageKey);
-          log.debug({ taskId: task.id, stage: stage.label }, "Task claim failed (already claimed)");
-          continue;
-        }
-
-        log.debug(
-          { stage: stage.label, taskId: task.id, candidateStatus: task.status, parallel },
-          "Task claimed for processing",
-        );
-
-        const taskPromise = processOneTask(task, stage)
-          .then((success) => {
-            if (!success) failedInCycle.add(task.id);
-          })
-          .catch((err) => {
-            failedInCycle.add(task.id);
+        const releaseOwnedResources = (): void => {
+          try {
+            if (claimedTask) {
+              releaseTaskClaim(claimedTask.id, COORDINATOR_ID);
+            }
+          } catch (err) {
             log.error(
-              { taskId: task.id, stage: stage.label, err },
-              "Unexpected error in task processing",
+              { taskId: claimedTask?.id ?? task.id, stage: stage.label, err },
+              "[FIX:149] Failed to release coordinator task claim",
             );
-          })
-          .finally(() => {
+          } finally {
             stageSemaphore.release(stageKey);
-            releaseTaskClaim(task.id);
-          });
+          }
+        };
 
-        spawned.push(taskPromise);
+        try {
+          log.debug(
+            { taskId: task.id, projectId: task.projectId, stage: stage.label },
+            "[FIX:149] Revalidating task candidate after coordinator permit",
+          );
+
+          if (!parallel && hasActiveLockedTaskForProject(task.projectId)) {
+            log.debug(
+              { taskId: task.id, projectId: task.projectId },
+              "Non-parallel project became active while waiting for permit, skipping",
+            );
+            continue;
+          }
+
+          if (blockCandidateIfRuntimeLimited(task, stage)) {
+            continue;
+          }
+
+          claimedTask = claimCoordinatorTaskIfEligible({
+            taskId: task.id,
+            expectedProjectId: task.projectId,
+            expectedStatus: task.status,
+            expectedAutoMode: task.status === "plan_ready" ? task.autoMode : undefined,
+            coordinatorId: COORDINATOR_ID,
+            lockDurationMs: CLAIM_LOCK_DURATION_MS,
+          });
+          if (!claimedTask) {
+            log.debug(
+              { taskId: task.id, stage: stage.label, expectedStatus: task.status },
+              "[FIX:149] Task candidate changed while waiting for permit, skipping",
+            );
+            continue;
+          }
+          const executionTask = claimedTask;
+
+          log.debug(
+            {
+              stage: stage.label,
+              taskId: executionTask.id,
+              candidateStatus: executionTask.status,
+              parallel,
+            },
+            "[FIX:149] Task revalidated and claimed for processing",
+          );
+
+          const taskPromise = processOneTask(executionTask, stage)
+            .then((success) => {
+              if (!success) failedInCycle.add(executionTask.id);
+            })
+            .catch((err) => {
+              failedInCycle.add(executionTask.id);
+              log.error(
+                { taskId: executionTask.id, stage: stage.label, err },
+                "Unexpected error in task processing",
+              );
+            })
+            .finally(releaseOwnedResources);
+
+          spawned.push(taskPromise);
+          cleanupOwnedByTaskPromise = true;
+        } finally {
+          if (!cleanupOwnedByTaskPromise) {
+            releaseOwnedResources();
+          }
+        }
       }
 
       // Within-project stage order is still sequential; independent project lanes run concurrently.
@@ -1052,7 +1116,17 @@ async function runPollCycle(): Promise<void> {
     }
   }
 
-  await Promise.allSettled(projectIds.map((projectId) => processProjectLane(projectId)));
+  const laneResults = await Promise.allSettled(
+    projectIds.map((projectId) => processProjectLane(projectId)),
+  );
+  laneResults.forEach((result, index) => {
+    if (result.status === "rejected") {
+      log.error(
+        { projectId: projectIds[index], err: result.reason },
+        "Project coordinator lane failed",
+      );
+    }
+  });
 
   log.debug("Poll cycle complete");
 }
