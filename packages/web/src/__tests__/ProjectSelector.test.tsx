@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { Project } from "@aif/shared/browser";
 
 const mockUseQuery = vi.fn();
 const mutateCreateProject = vi.fn();
@@ -17,8 +18,8 @@ let mockProjects = [
     planCheckerMaxBudgetUsd: null,
     implementerMaxBudgetUsd: null,
     reviewSidecarMaxBudgetUsd: null,
-    pinnedAt: null,
-    groupName: null,
+    pinnedAt: null as string | null,
+    groupName: null as string | null,
   },
 ];
 
@@ -79,8 +80,8 @@ describe("ProjectSelector", () => {
         planCheckerMaxBudgetUsd: null,
         implementerMaxBudgetUsd: null,
         reviewSidecarMaxBudgetUsd: null,
-        pinnedAt: null,
-        groupName: null,
+        pinnedAt: null as string | null,
+        groupName: null as string | null,
       },
     ];
   });
@@ -106,7 +107,7 @@ describe("ProjectSelector", () => {
     render(<ProjectSelector selectedId="p-1" onSelect={() => {}} onDeselect={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
 
-    const search = screen.getByRole("textbox", { name: "Search projects" });
+    const search = screen.getByRole("combobox", { name: "Search projects" });
     await waitFor(() => expect(document.activeElement).toBe(search));
     expect(screen.getByRole("listbox").parentElement?.className).toContain("max-h-[60vh]");
     expect(screen.getByRole("listbox").parentElement?.className).toContain("overflow-y-auto");
@@ -135,18 +136,181 @@ describe("ProjectSelector", () => {
 
     render(<ProjectSelector selectedId="p-1" onSelect={onSelect} onDeselect={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
-    const search = screen.getByRole("textbox", { name: "Search projects" });
+    const search = screen.getByRole("combobox", { name: "Search projects" });
 
     fireEvent.keyDown(search, { key: "ArrowDown" });
     fireEvent.keyDown(search, { key: "Enter" });
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "p-2" }));
-    expect(screen.queryByRole("textbox", { name: "Search projects" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Search projects" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Search projects" }), {
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Search projects" }), {
       key: "Escape",
     });
-    expect(screen.queryByRole("textbox", { name: "Search projects" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Search projects" })).toBeNull();
+  });
+
+  it("navigates projects in their rendered group order", () => {
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+    mockProjects = [
+      {
+        ...mockProjects[0],
+        groupName: "Zulu",
+      },
+      {
+        ...mockProjects[0],
+        id: "p-2",
+        name: "Beta",
+        rootPath: "/tmp/beta",
+        groupName: "Alpha",
+      },
+    ];
+    const onSelect = vi.fn();
+
+    render(<ProjectSelector selectedId={null} onSelect={onSelect} onDeselect={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /select project/i }));
+
+    const search = screen.getByRole("combobox", { name: "Search projects" });
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Beta/tmp/beta",
+      "Alpha/tmp/alpha",
+    ]);
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    fireEvent.keyDown(search, { key: "Enter" });
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "p-1" }));
+  });
+
+  it("uses collision-free section keys for groups named after built-in sections", () => {
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+    mockProjects = [
+      {
+        ...mockProjects[0],
+        pinnedAt: "2026-07-15T00:00:00.000Z",
+      },
+      {
+        ...mockProjects[0],
+        id: "p-2",
+        name: "Beta",
+        rootPath: "/tmp/beta",
+        groupName: "Pinned",
+      },
+      {
+        ...mockProjects[0],
+        id: "p-3",
+        name: "Gamma",
+        rootPath: "/tmp/gamma",
+        groupName: "Other",
+      },
+      {
+        ...mockProjects[0],
+        id: "p-4",
+        name: "Delta",
+        rootPath: "/tmp/delta",
+      },
+    ];
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      render(<ProjectSelector selectedId="p-1" onSelect={() => {}} onDeselect={() => {}} />);
+      fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+
+      expect(screen.getAllByText("Pinned")).toHaveLength(2);
+      expect(screen.getAllByText("Other")).toHaveLength(2);
+      expect(
+        consoleError.mock.calls.some((call) =>
+          call.some((argument) => String(argument).includes("same key")),
+        ),
+      ).toBe(false);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("exposes an active descendant while preserving the actual selected option", () => {
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+    mockProjects = [
+      ...mockProjects,
+      {
+        ...mockProjects[0],
+        id: "p-2",
+        name: "Beta",
+        rootPath: "/tmp/beta",
+      },
+    ];
+
+    render(<ProjectSelector selectedId="p-1" onSelect={() => {}} onDeselect={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+
+    const search = screen.getByRole("combobox", { name: "Search projects" });
+    const listbox = screen.getByRole("listbox", { name: "Projects" });
+    const alphaOption = screen.getByRole("option", { name: /alpha/i });
+    const betaOption = screen.getByRole("option", { name: /beta/i });
+
+    expect(search).toHaveAttribute("aria-controls", listbox.id);
+    expect(search).toHaveAttribute("aria-activedescendant", alphaOption.id);
+    expect(alphaOption).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+
+    expect(search).toHaveAttribute("aria-activedescendant", betaOption.id);
+    expect(alphaOption).toHaveAttribute("aria-selected", "true");
+    expect(betaOption).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("closes the picker with Escape from its action controls and restores trigger focus", () => {
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+
+    render(<ProjectSelector selectedId="p-1" onSelect={() => {}} onDeselect={() => {}} />);
+    const trigger = screen.getByRole("button", { name: /alpha/i });
+    fireEvent.click(trigger);
+    const pinButton = screen.getByTitle("Pin");
+    pinButton.focus();
+
+    fireEvent.keyDown(pinButton, { key: "Escape" });
+
+    expect(screen.queryByRole("combobox", { name: "Search projects" })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("pushes one history entry when saving a group for the selected project", () => {
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+    mutateUpdateProject.mockImplementation(
+      (
+        _input: unknown,
+        options: { onSuccess?: (project: (typeof mockProjects)[number]) => void },
+      ) => options.onSuccess?.(mockProjects[0]),
+    );
+    mutateUpdateOrganization.mockImplementation(
+      (
+        _input: unknown,
+        options: { onSuccess?: (project: (typeof mockProjects)[number]) => void },
+      ) => options.onSuccess?.({ ...mockProjects[0], groupName: "Platform" }),
+    );
+    const pushState = vi.spyOn(window.history, "pushState").mockImplementation(() => {});
+    const onSelect = (project: Project) => {
+      window.history.pushState(null, "", `/project/${project.id}`);
+    };
+
+    try {
+      render(<ProjectSelector selectedId="p-1" onSelect={onSelect} onDeselect={() => {}} />);
+      fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+      fireEvent.click(screen.getByTitle("Edit"));
+      fireEvent.change(screen.getByPlaceholderText("Optional product or team"), {
+        target: { value: "Platform" },
+      });
+      fireEvent.click(screen.getByText("Save"));
+
+      expect(mutateUpdateOrganization).toHaveBeenCalledWith(
+        { id: "p-1", input: { groupName: "Platform" } },
+        expect.objectContaining({ onSuccess: expect.any(Function) }),
+      );
+      expect(pushState).toHaveBeenCalledTimes(1);
+      expect(pushState).toHaveBeenCalledWith(null, "", "/project/p-1");
+    } finally {
+      pushState.mockRestore();
+    }
   });
 
   it("pins a project from the picker", () => {
