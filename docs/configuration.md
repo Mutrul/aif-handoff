@@ -423,6 +423,11 @@ COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT=3
 COORDINATOR_MAX_CONCURRENT_PROJECTS=4
 ```
 
+> **Upgrading from the previous coordinator limit:** `COORDINATOR_MAX_CONCURRENT_TASKS`
+> used to control per-project/stage concurrency. It is now the global ceiling across all
+> projects. Existing deployments should set all three values above explicitly; leaving an old
+> value such as `COORDINATOR_MAX_CONCURRENT_TASKS=3` limits total coordinator concurrency to 3.
+
 2. Enable per-project in the web UI: open project settings and toggle **Parallel Execution**.
 
 3. For projects that also use `git.create_branches=true`, opt into task worktrees:
@@ -437,7 +442,8 @@ AIF_TASK_WORKTREES_ENABLED=true
   - **Parallel off** (default): 1 task per project at a time — identical to serial behavior
   - **Parallel on**: up to `COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT` tasks per project per stage
 - The coordinator processes up to `COORDINATOR_MAX_CONCURRENT_PROJECTS` independent project lanes concurrently in a poll cycle. Stage ordering is preserved inside a project lane, so a project's planner still drains before that same project's reviewer, but a slow planner in project A no longer blocks a reviewer in project B.
-- Across all lanes, `COORDINATOR_MAX_CONCURRENT_TASKS` remains the global safety ceiling for active coordinator tasks.
+- Across all lanes, `COORDINATOR_MAX_CONCURRENT_TASKS` remains the global safety ceiling for active coordinator tasks. Runnable lanes receive slots through a fair FIFO governor, so an older busy project cannot consume the whole first wave when other selected lanes are ready.
+- Cron ticks and WebSocket wakes share one single-flight poll loop. A wake received during an active cycle is coalesced into one follow-up cycle, preserving project-local stage order across trigger sources.
 - With `AIF_TASK_WORKTREES_ENABLED=false` (default), any branch-isolated project (`git.create_branches=true`) remains serial. The API also rejects parallel auto-queue for that combination.
 - With `AIF_TASK_WORKTREES_ENABLED=true`, full-mode planning for parallel branch-isolated projects creates a sibling git worktree for each task, persists its absolute path in `tasks.worktree_path`, and runs all downstream stages from that path. Legacy branch-bound tasks that have `branchName` but no `worktreePath` still force serial execution until they drain.
 - Tasks within a stage run concurrently via `Promise.allSettled` — a failure in one task does not block others

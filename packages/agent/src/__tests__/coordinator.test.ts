@@ -108,6 +108,24 @@ describe("coordinator", () => {
     getStageSemaphore().reset();
   });
 
+  it("should remove inactive project-stage semaphore keys", async () => {
+    const semaphore = getStageSemaphore();
+
+    await semaphore.acquire("project-1:planner", 2, 2);
+    await semaphore.acquire("project-1:planner", 2, 2);
+    expect(semaphore.totalActive()).toBe(2);
+    expect(semaphore.trackedKeyCount()).toBe(1);
+
+    semaphore.release("project-1:planner");
+    expect(semaphore.totalActive()).toBe(1);
+    expect(semaphore.trackedKeyCount()).toBe(1);
+
+    semaphore.release("project-1:planner");
+    semaphore.release("missing:planner");
+    expect(semaphore.totalActive()).toBe(0);
+    expect(semaphore.trackedKeyCount()).toBe(0);
+  });
+
   function insertRuntimeProfile(input: {
     id: string;
     projectId?: string | null;
@@ -1688,9 +1706,44 @@ describe("coordinator", () => {
         }
       }
 
-      await pollAndProcess();
+      const startedProjectIds: string[] = [];
+      const releasePlanners: Array<() => void> = [];
+      let activePlanners = 0;
+      let peakActivePlanners = 0;
 
-      expect(runPlanner).toHaveBeenCalledTimes(2);
+      vi.mocked(runPlanner).mockImplementation((taskId) => {
+        const projectId = taskId.startsWith("global-cap-task-1-")
+          ? "global-cap-project-1"
+          : "global-cap-project-2";
+        startedProjectIds.push(projectId);
+        activePlanners += 1;
+        peakActivePlanners = Math.max(peakActivePlanners, activePlanners);
+
+        if (startedProjectIds.length > 2) {
+          activePlanners -= 1;
+          return Promise.resolve();
+        }
+
+        return new Promise<void>((resolve) => {
+          releasePlanners.push(() => {
+            activePlanners -= 1;
+            resolve();
+          });
+        });
+      });
+
+      const pollPromise = pollAndProcess();
+      try {
+        await vi.waitFor(() => expect(releasePlanners).toHaveLength(2));
+        expect(new Set(startedProjectIds)).toEqual(
+          new Set(["global-cap-project-1", "global-cap-project-2"]),
+        );
+        expect(peakActivePlanners).toBeLessThanOrEqual(2);
+      } finally {
+        for (const release of releasePlanners) release();
+        await pollPromise;
+      }
+
       expect(getStageSemaphore().totalActive()).toBe(0);
     } finally {
       Object.assign(coordinatorEnv, previousLimits);
@@ -1743,6 +1796,57 @@ describe("coordinator", () => {
     expect(runReviewer).toHaveBeenCalledWith("ready-review-task", "/tmp/review");
   });
 
+  it("should serialize overlapping poll cycles to preserve stage order within a project", async () => {
+    const db = testDb.current;
+    db.insert(projects)
+      .values({
+        id: "overlap-project",
+        name: "Overlap",
+        rootPath: "/tmp/overlap",
+        parallelEnabled: true,
+      })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "overlap-planning-task",
+        projectId: "overlap-project",
+        title: "Slow planning",
+        status: "planning",
+      })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "overlap-review-task",
+        projectId: "overlap-project",
+        title: "Ready review",
+        status: "review",
+      })
+      .run();
+
+    let resolvePlanner: (() => void) | undefined;
+    vi.mocked(runPlanner).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePlanner = resolve;
+        }),
+    );
+
+    const firstPoll = pollAndProcess();
+    await vi.waitFor(() => expect(resolvePlanner).toBeTypeOf("function"));
+
+    const secondPoll = pollAndProcess();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const reviewerStartedBeforePlannerFinished = vi
+      .mocked(runReviewer)
+      .mock.calls.some(([taskId]) => taskId === "overlap-review-task");
+
+    resolvePlanner?.();
+    await Promise.all([firstPoll, secondPoll]);
+
+    expect(reviewerStartedBeforePlannerFinished).toBe(false);
+    expect(runReviewer).toHaveBeenCalledWith("overlap-review-task", "/tmp/overlap");
+  });
+
   it("should start one task in each independent project lane beyond the per-project task cap", async () => {
     const db = testDb.current;
     for (let i = 1; i <= 4; i++) {
@@ -1759,10 +1863,26 @@ describe("coordinator", () => {
         .run();
     }
 
-    await pollAndProcess();
+    const startedTaskIds: string[] = [];
+    const releasePlanners: Array<() => void> = [];
+    vi.mocked(runPlanner).mockImplementation(
+      (taskId) =>
+        new Promise<void>((resolve) => {
+          startedTaskIds.push(taskId);
+          releasePlanners.push(resolve);
+        }),
+    );
 
-    for (let i = 1; i <= 4; i++) {
-      expect(runPlanner).toHaveBeenCalledWith(`lane-task-${i}`, `/tmp/lane-${i}`);
+    const pollPromise = pollAndProcess();
+    try {
+      await vi.waitFor(() => expect(releasePlanners).toHaveLength(4));
+
+      for (let i = 1; i <= 4; i++) {
+        expect(startedTaskIds).toContain(`lane-task-${i}`);
+      }
+    } finally {
+      for (const release of releasePlanners) release();
+      await pollPromise;
     }
   });
 });

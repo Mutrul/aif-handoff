@@ -127,33 +127,82 @@ const PIPELINE: StatusTransition[] = [
 
 class StageSemaphore {
   private counts = new Map<string, number>();
+  private activeCount = 0;
+  private waiters: Array<{
+    key: string;
+    keyMax: number;
+    globalMax: number;
+    resolve: () => void;
+  }> = [];
+
+  private canAcquire(key: string, keyMax: number, globalMax: number): boolean {
+    const current = this.counts.get(key) ?? 0;
+    return current < keyMax && this.activeCount < globalMax;
+  }
 
   tryAcquire(key: string, keyMax: number, globalMax: number): boolean {
-    const current = this.counts.get(key) ?? 0;
-    if (current >= keyMax || this.totalActive() >= globalMax) return false;
-    this.counts.set(key, current + 1);
+    if (!this.canAcquire(key, keyMax, globalMax)) return false;
+    this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
+    this.activeCount += 1;
     return true;
+  }
+
+  acquire(key: string, keyMax: number, globalMax: number): Promise<void> {
+    if (this.tryAcquire(key, keyMax, globalMax)) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.waiters.push({ key, keyMax, globalMax, resolve });
+    });
   }
 
   release(key: string): void {
     const current = this.counts.get(key) ?? 0;
-    this.counts.set(key, Math.max(0, current - 1));
-  }
+    if (current <= 0) return;
 
-  available(key: string, keyMax: number, globalMax: number): number {
-    const keyAvailable = keyMax - (this.counts.get(key) ?? 0);
-    const globalAvailable = globalMax - this.totalActive();
-    return Math.max(0, Math.min(keyAvailable, globalAvailable));
+    if (current === 1) {
+      this.counts.delete(key);
+    } else {
+      this.counts.set(key, current - 1);
+    }
+    this.activeCount -= 1;
+    this.drainWaiters();
   }
 
   totalActive(): number {
-    let total = 0;
-    for (const count of this.counts.values()) total += count;
-    return total;
+    return this.activeCount;
+  }
+
+  trackedKeyCount(): number {
+    return this.counts.size;
   }
 
   reset(): void {
+    if (this.waiters.length > 0) {
+      throw new Error("Cannot reset stage semaphore while acquisitions are queued");
+    }
     this.counts.clear();
+    this.activeCount = 0;
+  }
+
+  private drainWaiters(): void {
+    let granted = true;
+    while (granted) {
+      granted = false;
+      const waiterIndex = this.waiters.findIndex((waiter) =>
+        this.canAcquire(waiter.key, waiter.keyMax, waiter.globalMax),
+      );
+      if (waiterIndex < 0) return;
+
+      const [waiter] = this.waiters.splice(waiterIndex, 1);
+      if (!waiter) return;
+
+      this.counts.set(waiter.key, (this.counts.get(waiter.key) ?? 0) + 1);
+      this.activeCount += 1;
+      waiter.resolve();
+      granted = true;
+    }
   }
 }
 
@@ -815,7 +864,10 @@ export function processAutoQueueAdvance(): number {
 
 // ── Poll cycle ───────────────────────────────────────────────
 
-export async function pollAndProcess(): Promise<void> {
+let activePollPromise: Promise<void> | null = null;
+let followUpPollRequested = false;
+
+async function runPollCycle(): Promise<void> {
   log.debug("Starting poll cycle");
 
   // Release stale locks BEFORE watchdog — otherwise watchdog moves task to blocked_external
@@ -891,13 +943,8 @@ export async function pollAndProcess(): Promise<void> {
       const parallel = concurrency.parallel;
       const projectMax = concurrency.max;
       const stageKey = `${projectId}:${stage.label}`;
-      const available = stageSemaphore.available(stageKey, projectMax, globalMaxTasks);
-      if (available <= 0) {
-        log.debug({ stage: stage.label, projectId }, "Project stage at capacity, skipping");
-        continue;
-      }
 
-      const candidateWindow = Math.min(Math.max(available * 5, available), 50);
+      const candidateWindow = Math.min(Math.max(projectMax * 5, projectMax), 50);
       const candidates = findCoordinatorTaskCandidatesForProject(
         projectId,
         stage.label,
@@ -915,7 +962,6 @@ export async function pollAndProcess(): Promise<void> {
           projectId,
           candidateCount: candidates.length,
           candidateWindow,
-          available,
           projectMax,
           globalMaxTasks,
         },
@@ -967,15 +1013,12 @@ export async function pollAndProcess(): Promise<void> {
           continue;
         }
 
+        await stageSemaphore.acquire(stageKey, projectMax, globalMaxTasks);
+
         if (!claimTask(task.id, COORDINATOR_ID, CLAIM_LOCK_DURATION_MS)) {
+          stageSemaphore.release(stageKey);
           log.debug({ taskId: task.id, stage: stage.label }, "Task claim failed (already claimed)");
           continue;
-        }
-
-        if (!stageSemaphore.tryAcquire(stageKey, projectMax, globalMaxTasks)) {
-          releaseTaskClaim(task.id);
-          log.debug({ stage: stage.label, projectId }, "Project stage semaphore full after claim");
-          break;
         }
 
         log.debug(
@@ -1012,4 +1055,24 @@ export async function pollAndProcess(): Promise<void> {
   await Promise.allSettled(projectIds.map((projectId) => processProjectLane(projectId)));
 
   log.debug("Poll cycle complete");
+}
+
+export function pollAndProcess(): Promise<void> {
+  if (activePollPromise) {
+    followUpPollRequested = true;
+    log.debug("Poll cycle already active; queued one follow-up cycle");
+    return activePollPromise;
+  }
+
+  async function drainPollRequests(): Promise<void> {
+    do {
+      followUpPollRequested = false;
+      await runPollCycle();
+    } while (followUpPollRequested);
+  }
+
+  activePollPromise = drainPollRequests().finally(() => {
+    activePollPromise = null;
+  });
+  return activePollPromise;
 }
