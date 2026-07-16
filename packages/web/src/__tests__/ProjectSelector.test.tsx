@@ -259,6 +259,43 @@ describe("ProjectSelector", () => {
     expect(betaOption).toHaveAttribute("aria-selected", "false");
   });
 
+  it("preserves the active project when the visible list reorders", () => {
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+    mockProjects = [
+      ...mockProjects,
+      {
+        ...mockProjects[0],
+        id: "p-2",
+        name: "Beta",
+        rootPath: "/tmp/beta",
+      },
+    ];
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <ProjectSelector selectedId="p-1" onSelect={onSelect} onDeselect={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+
+    const search = screen.getByRole("combobox", { name: "Search projects" });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    const betaOptionId = screen.getByRole("option", { name: /beta/i }).id;
+    expect(search).toHaveAttribute("aria-activedescendant", betaOptionId);
+
+    mockProjects = mockProjects.map((project) =>
+      project.id === "p-2" ? { ...project, pinnedAt: "2026-07-16T00:00:00.000Z" } : project,
+    );
+    rerender(<ProjectSelector selectedId="p-1" onSelect={onSelect} onDeselect={() => {}} />);
+
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Beta/tmp/beta",
+      "Alpha/tmp/alpha",
+    ]);
+    expect(search).toHaveAttribute("aria-activedescendant", betaOptionId);
+
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "p-2" }));
+  });
+
   it("closes the picker with Escape from its action controls and restores trigger focus", () => {
     mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
 
@@ -274,7 +311,7 @@ describe("ProjectSelector", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it("pushes one history entry when saving a group for the selected project", () => {
+  it("does not push history when saving a group for the selected project", () => {
     mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
     mutateUpdateProject.mockImplementation(
       (
@@ -306,11 +343,75 @@ describe("ProjectSelector", () => {
         { id: "p-1", input: { groupName: "Platform" } },
         expect.objectContaining({ onSuccess: expect.any(Function) }),
       );
-      expect(pushState).toHaveBeenCalledTimes(1);
-      expect(pushState).toHaveBeenCalledWith(null, "", "/project/p-1");
+      expect(pushState).not.toHaveBeenCalled();
     } finally {
       pushState.mockRestore();
     }
+  });
+
+  it("does not navigate when a delayed group update finishes after selection changes", () => {
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+    mockProjects = [
+      ...mockProjects,
+      {
+        ...mockProjects[0],
+        id: "p-2",
+        name: "Beta",
+        rootPath: "/tmp/beta",
+      },
+    ];
+    mutateUpdateProject.mockImplementation(
+      (
+        _input: unknown,
+        options: { onSuccess?: (project: (typeof mockProjects)[number]) => void },
+      ) => options.onSuccess?.(mockProjects[0]),
+    );
+    let finishOrganizationUpdate: ((project: (typeof mockProjects)[number]) => void) | undefined;
+    mutateUpdateOrganization.mockImplementation(
+      (
+        _input: unknown,
+        options: { onSuccess?: (project: (typeof mockProjects)[number]) => void },
+      ) => {
+        finishOrganizationUpdate = options.onSuccess;
+      },
+    );
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <ProjectSelector selectedId="p-1" onSelect={onSelect} onDeselect={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+    fireEvent.click(screen.getAllByTitle("Edit")[0]);
+    fireEvent.change(screen.getByPlaceholderText("Optional product or team"), {
+      target: { value: "Platform" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(finishOrganizationUpdate).toEqual(expect.any(Function));
+    expect(onSelect).not.toHaveBeenCalled();
+
+    rerender(<ProjectSelector selectedId="p-2" onSelect={onSelect} onDeselect={() => {}} />);
+    finishOrganizationUpdate?.({ ...mockProjects[0], groupName: "Platform" });
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("does not navigate after saving an edit without an organization change", () => {
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+    mutateUpdateProject.mockImplementation(
+      (
+        _input: unknown,
+        options: { onSuccess?: (project: (typeof mockProjects)[number]) => void },
+      ) => options.onSuccess?.(mockProjects[0]),
+    );
+    const onSelect = vi.fn();
+
+    render(<ProjectSelector selectedId="p-1" onSelect={onSelect} onDeselect={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+    fireEvent.click(screen.getByTitle("Edit"));
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(mutateUpdateOrganization).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("pins a project from the picker", () => {

@@ -64,7 +64,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [projectQuery, setProjectQuery] = useState("");
   const [projectSort, setProjectSort] = useState<ProjectSort>("name");
-  const [selectedProjectIndex, setSelectedProjectIndex] = useState(0);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [rootPath, setRootPath] = useState("");
   const [groupName, setGroupName] = useState("");
@@ -139,9 +139,14 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
     () => new Map(visibleProjects.map((project, index) => [project.id, index])),
     [visibleProjects],
   );
-  const boundedSelectedProjectIndex =
-    visibleProjects.length === 0 ? 0 : Math.min(selectedProjectIndex, visibleProjects.length - 1);
-  const activeProject = visibleProjects[boundedSelectedProjectIndex];
+  const storedActiveProjectIndex =
+    activeProjectId == null ? undefined : projectIndexById.get(activeProjectId);
+  const fallbackActiveProjectId = visibleProjects[0]?.id ?? null;
+  const activeProjectIndex = storedActiveProjectIndex ?? (visibleProjects.length > 0 ? 0 : -1);
+  const activeProject = activeProjectIndex >= 0 ? visibleProjects[activeProjectIndex] : undefined;
+  if (activeProjectId !== null && storedActiveProjectIndex === undefined) {
+    setActiveProjectId(fallbackActiveProjectId);
+  }
   const projectOptionId = (projectId: string) => `${listboxId}-option-${projectId}`;
   const isEditDialogOpen = dialogOpen && dialogMode === "edit" && !!editingId;
   const { data: mcpData, isLoading: isMcpLoading } = useQuery({
@@ -166,7 +171,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
     setAutoQueueModeState(false);
     setDropdownOpen(false);
     setProjectQuery("");
-    setSelectedProjectIndex(0);
+    setActiveProjectId(null);
     setDialogOpen(true);
   };
 
@@ -191,7 +196,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
     setAutoQueueModeState(p.autoQueueMode ?? false);
     setDropdownOpen(false);
     setProjectQuery("");
-    setSelectedProjectIndex(0);
+    setActiveProjectId(null);
     setDialogOpen(true);
   };
 
@@ -289,7 +294,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
           },
         },
         {
-          onSuccess: (project) => {
+          onSuccess: () => {
             const normalizedGroupName = groupName.trim() || null;
             const groupChanged = normalizedGroupName !== (editingProject?.groupName ?? null);
             if (groupChanged) {
@@ -300,12 +305,11 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
               updateOrganization.mutate(
                 { id: editingId, input: { groupName: normalizedGroupName } },
                 {
-                  onSuccess: (organizedProject) => {
-                    console.debug("[FIX:pr-150] Project group updated", {
+                  onSuccess: () => {
+                    console.debug("[FIX:pr-150] Project group updated without navigation", {
                       projectId: editingId,
                       groupName: normalizedGroupName,
                     });
-                    if (selectedId === editingId) onSelect(organizedProject);
                   },
                   onError: (error) => {
                     console.error("[FIX:pr-150] Failed to update project group", {
@@ -326,7 +330,6 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                 },
               );
             }
-            if (selectedId === editingId && !groupChanged) onSelect(project);
             setDialogOpen(false);
           },
           onError: (error) => {
@@ -343,7 +346,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
   const closeDropdown = useCallback(() => {
     setDropdownOpen(false);
     setProjectQuery("");
-    setSelectedProjectIndex(0);
+    setActiveProjectId(null);
   }, []);
   useOutsideClick(selectorRef, closeDropdown, dropdownOpen);
 
@@ -359,9 +362,9 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
   }, [dropdownOpen]);
 
   useEffect(() => {
-    if (!dropdownOpen) return;
-    projectItemRefs.current[boundedSelectedProjectIndex]?.scrollIntoView({ block: "nearest" });
-  }, [boundedSelectedProjectIndex, dropdownOpen]);
+    if (!dropdownOpen || activeProjectIndex < 0) return;
+    projectItemRefs.current[activeProjectIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeProject?.id, activeProjectIndex, dropdownOpen]);
 
   const selectProject = (project: Project) => {
     onSelect(project);
@@ -379,16 +382,16 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setSelectedProjectIndex((boundedSelectedProjectIndex + 1) % visibleProjects.length);
+      const nextProject = visibleProjects[(activeProjectIndex + 1) % visibleProjects.length];
+      setActiveProjectId(nextProject.id);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
-      setSelectedProjectIndex(
-        (boundedSelectedProjectIndex - 1 + visibleProjects.length) % visibleProjects.length,
-      );
+      const previousIndex =
+        (activeProjectIndex - 1 + visibleProjects.length) % visibleProjects.length;
+      setActiveProjectId(visibleProjects[previousIndex].id);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      const project = visibleProjects[boundedSelectedProjectIndex];
-      if (project) selectProject(project);
+      if (activeProject) selectProject(activeProject);
     }
   };
 
@@ -430,7 +433,6 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                 value={projectQuery}
                 onChange={(event) => {
                   setProjectQuery(event.target.value);
-                  setSelectedProjectIndex(0);
                 }}
                 onKeyDown={handleProjectSearchKeyDown}
                 placeholder="Search projects or paths..."
@@ -449,7 +451,6 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                 options={[...PROJECT_SORT_OPTIONS]}
                 onChange={(event) => {
                   setProjectSort(event.target.value as ProjectSort);
-                  setSelectedProjectIndex(0);
                 }}
                 selectSize="sm"
                 className="w-full"
@@ -467,7 +468,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                     )}
                     {section.projects.map((project) => {
                       const projectIndex = projectIndexById.get(project.id) ?? 0;
-                      const isKeyboardSelected = projectIndex === boundedSelectedProjectIndex;
+                      const isKeyboardSelected = project.id === activeProject?.id;
                       return (
                         <div
                           key={project.id}
