@@ -2096,6 +2096,130 @@ describe("coordinator", () => {
     }
   });
 
+  it("should drain started lane tasks before propagating a later candidate setup failure", async () => {
+    const db = testDb.current;
+    const coordinatorEnv = getEnv();
+    const previousLimits = {
+      COORDINATOR_MAX_CONCURRENT_TASKS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS,
+      COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT:
+        coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_PROJECTS,
+    };
+    let releasePlanner: (() => void) | undefined;
+    let pollPromise: Promise<void> | undefined;
+
+    Object.assign(coordinatorEnv, {
+      COORDINATOR_MAX_CONCURRENT_TASKS: 2,
+      COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT: 2,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: 1,
+    });
+
+    try {
+      db.update(projects)
+        .set({ parallelEnabled: true })
+        .where(eq(projects.id, "test-project"))
+        .run();
+      db.insert(tasks)
+        .values([
+          {
+            id: "lane-drain-planning-1",
+            projectId: "test-project",
+            title: "Running planner",
+            status: "planning",
+            createdAt: "2026-07-16T00:00:00.000Z",
+          },
+          {
+            id: "lane-drain-planning-2",
+            projectId: "test-project",
+            title: "Throwing setup",
+            status: "planning",
+            createdAt: "2026-07-16T00:01:00.000Z",
+          },
+          {
+            id: "lane-drain-review",
+            projectId: "test-project",
+            title: "Later review",
+            status: "review",
+            createdAt: "2026-07-16T00:02:00.000Z",
+          },
+        ])
+        .run();
+
+      vi.mocked(runPlanner).mockImplementation((taskId) => {
+        if (taskId !== "lane-drain-planning-1") return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          releasePlanner = resolve;
+        });
+      });
+
+      const actualClaim = claimCoordinatorTaskIfEligibleMock.getMockImplementation();
+      if (!actualClaim) throw new Error("Expected real coordinator claim implementation");
+      claimCoordinatorTaskIfEligibleMock
+        .mockImplementationOnce(actualClaim)
+        .mockImplementationOnce(() => {
+          throw new Error("second candidate claim failed");
+        });
+
+      let pollSettled = false;
+      pollPromise = pollAndProcess();
+      void pollPromise.finally(() => {
+        pollSettled = true;
+      });
+
+      await vi.waitFor(() => expect(releasePlanner).toBeTypeOf("function"));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(pollSettled).toBe(false);
+
+      const overlappingPoll = pollAndProcess();
+      expect(overlappingPoll).toBe(pollPromise);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(runReviewer).not.toHaveBeenCalledWith("lane-drain-review", "/tmp/test");
+
+      releasePlanner?.();
+      await Promise.all([pollPromise, overlappingPoll]);
+
+      await pollAndProcess();
+
+      expect(runReviewer).toHaveBeenCalledWith("lane-drain-review", "/tmp/test");
+      expect(getStageSemaphore().totalActive()).toBe(0);
+    } finally {
+      releasePlanner?.();
+      if (pollPromise) await pollPromise;
+      Object.assign(coordinatorEnv, previousLimits);
+    }
+  });
+
+  it("should release an owner claim when the claim path throws after writing the lock", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "post-write-claim-error",
+        projectId: "test-project",
+        title: "Post-write claim error",
+        status: "planning",
+      })
+      .run();
+
+    const actualClaim = claimCoordinatorTaskIfEligibleMock.getMockImplementation();
+    if (!actualClaim) throw new Error("Expected real coordinator claim implementation");
+    let claimWasWritten = false;
+    claimCoordinatorTaskIfEligibleMock.mockImplementationOnce((...args) => {
+      claimWasWritten = actualClaim(...args) != null;
+      throw new Error("claim result conversion failed");
+    });
+
+    await pollAndProcess();
+
+    expect(claimWasWritten).toBe(true);
+    expect(
+      db.select().from(tasks).where(eq(tasks.id, "post-write-claim-error")).get(),
+    ).toMatchObject({
+      lockedBy: null,
+      lockedUntil: null,
+    });
+    expect(getStageSemaphore().totalActive()).toBe(0);
+  });
+
   it("should start one task in each independent project lane beyond the per-project task cap", async () => {
     const db = testDb.current;
     for (let i = 1; i <= 4; i++) {

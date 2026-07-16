@@ -999,59 +999,23 @@ async function runPollCycle(): Promise<void> {
 
       const spawned: Promise<void>[] = [];
 
-      for (const task of candidates) {
-        // Per-project concurrency: non-parallel projects limited to 1 task at a time
-        if (spawned.length >= projectMax) {
-          log.debug(
-            { taskId: task.id, projectId: task.projectId, projectMax },
-            "Project at capacity, skipping task",
-          );
-          continue;
-        }
-
-        // Cross-cycle guard: for non-parallel projects, check DB for any active lock
-        // (another concurrent poll cycle may have already claimed a task for this project)
-        if (!parallel && hasActiveLockedTaskForProject(task.projectId)) {
-          log.debug(
-            { taskId: task.id, projectId: task.projectId },
-            "Non-parallel project has active lock from another cycle, skipping",
-          );
-          continue;
-        }
-
-        if (blockCandidateIfRuntimeLimited(task, stage)) {
-          continue;
-        }
-
-        await stageSemaphore.acquire(stageKey, projectMax, globalMaxTasks);
-        let claimedTask: TaskRow | undefined;
-        let cleanupOwnedByTaskPromise = false;
-
-        const releaseOwnedResources = (): void => {
-          try {
-            if (claimedTask) {
-              releaseTaskClaim(claimedTask.id, COORDINATOR_ID);
-            }
-          } catch (err) {
-            log.error(
-              { taskId: claimedTask?.id ?? task.id, stage: stage.label, err },
-              "[FIX:149] Failed to release coordinator task claim",
+      try {
+        for (const task of candidates) {
+          // Per-project concurrency: non-parallel projects limited to 1 task at a time
+          if (spawned.length >= projectMax) {
+            log.debug(
+              { taskId: task.id, projectId: task.projectId, projectMax },
+              "Project at capacity, skipping task",
             );
-          } finally {
-            stageSemaphore.release(stageKey);
+            continue;
           }
-        };
 
-        try {
-          log.debug(
-            { taskId: task.id, projectId: task.projectId, stage: stage.label },
-            "[FIX:149] Revalidating task candidate after coordinator permit",
-          );
-
+          // Cross-cycle guard: for non-parallel projects, check DB for any active lock
+          // (another concurrent poll cycle may have already claimed a task for this project)
           if (!parallel && hasActiveLockedTaskForProject(task.projectId)) {
             log.debug(
               { taskId: task.id, projectId: task.projectId },
-              "Non-parallel project became active while waiting for permit, skipping",
+              "Non-parallel project has active lock from another cycle, skipping",
             );
             continue;
           }
@@ -1060,58 +1024,109 @@ async function runPollCycle(): Promise<void> {
             continue;
           }
 
-          claimedTask = claimCoordinatorTaskIfEligible({
-            taskId: task.id,
-            expectedProjectId: task.projectId,
-            expectedStatus: task.status,
-            expectedAutoMode: task.status === "plan_ready" ? task.autoMode : undefined,
-            coordinatorId: COORDINATOR_ID,
-            lockDurationMs: CLAIM_LOCK_DURATION_MS,
-          });
-          if (!claimedTask) {
-            log.debug(
-              { taskId: task.id, stage: stage.label, expectedStatus: task.status },
-              "[FIX:149] Task candidate changed while waiting for permit, skipping",
-            );
-            continue;
-          }
-          const executionTask = claimedTask;
+          await stageSemaphore.acquire(stageKey, projectMax, globalMaxTasks);
+          let claimedTask: TaskRow | undefined;
+          let claimOutcomeUncertain = false;
+          let cleanupOwnedByTaskPromise = false;
 
-          log.debug(
-            {
-              stage: stage.label,
-              taskId: executionTask.id,
-              candidateStatus: executionTask.status,
-              parallel,
-            },
-            "[FIX:149] Task revalidated and claimed for processing",
-          );
-
-          const taskPromise = processOneTask(executionTask, stage)
-            .then((success) => {
-              if (!success) failedInCycle.add(executionTask.id);
-            })
-            .catch((err) => {
-              failedInCycle.add(executionTask.id);
+          const releaseOwnedResources = (): void => {
+            try {
+              const taskIdToRelease =
+                claimedTask?.id ?? (claimOutcomeUncertain ? task.id : undefined);
+              if (taskIdToRelease) {
+                releaseTaskClaim(taskIdToRelease, COORDINATOR_ID);
+              }
+            } catch (err) {
               log.error(
-                { taskId: executionTask.id, stage: stage.label, err },
-                "Unexpected error in task processing",
+                { taskId: claimedTask?.id ?? task.id, stage: stage.label, err },
+                "[FIX:149] Failed to release coordinator task claim",
               );
-            })
-            .finally(releaseOwnedResources);
+            } finally {
+              stageSemaphore.release(stageKey);
+            }
+          };
 
-          spawned.push(taskPromise);
-          cleanupOwnedByTaskPromise = true;
-        } finally {
-          if (!cleanupOwnedByTaskPromise) {
-            releaseOwnedResources();
+          try {
+            log.debug(
+              { taskId: task.id, projectId: task.projectId, stage: stage.label },
+              "[FIX:149] Revalidating task candidate after coordinator permit",
+            );
+
+            if (!parallel && hasActiveLockedTaskForProject(task.projectId)) {
+              log.debug(
+                { taskId: task.id, projectId: task.projectId },
+                "Non-parallel project became active while waiting for permit, skipping",
+              );
+              continue;
+            }
+
+            if (blockCandidateIfRuntimeLimited(task, stage)) {
+              continue;
+            }
+
+            claimOutcomeUncertain = true;
+            claimedTask = claimCoordinatorTaskIfEligible({
+              taskId: task.id,
+              expectedProjectId: task.projectId,
+              expectedStatus: task.status,
+              expectedAutoMode: task.status === "plan_ready" ? task.autoMode : undefined,
+              coordinatorId: COORDINATOR_ID,
+              lockDurationMs: CLAIM_LOCK_DURATION_MS,
+            });
+            claimOutcomeUncertain = false;
+            if (!claimedTask) {
+              log.debug(
+                { taskId: task.id, stage: stage.label, expectedStatus: task.status },
+                "[FIX:149] Task candidate changed while waiting for permit, skipping",
+              );
+              continue;
+            }
+            const executionTask = claimedTask;
+
+            log.debug(
+              {
+                stage: stage.label,
+                taskId: executionTask.id,
+                candidateStatus: executionTask.status,
+                parallel,
+              },
+              "[FIX:149] Task revalidated and claimed for processing",
+            );
+
+            const taskPromise = processOneTask(executionTask, stage)
+              .then((success) => {
+                if (!success) failedInCycle.add(executionTask.id);
+              })
+              .catch((err) => {
+                failedInCycle.add(executionTask.id);
+                log.error(
+                  { taskId: executionTask.id, stage: stage.label, err },
+                  "Unexpected error in task processing",
+                );
+              })
+              .finally(releaseOwnedResources);
+
+            spawned.push(taskPromise);
+            cleanupOwnedByTaskPromise = true;
+          } finally {
+            if (!cleanupOwnedByTaskPromise) {
+              releaseOwnedResources();
+            }
           }
         }
-      }
-
-      // Within-project stage order is still sequential; independent project lanes run concurrently.
-      if (spawned.length > 0) {
-        await Promise.allSettled(spawned);
+      } finally {
+        // Preserve stage ordering even when setup for a later candidate rejects the lane.
+        if (spawned.length > 0) {
+          log.debug(
+            { projectId, stage: stage.label, taskCount: spawned.length },
+            "[FIX:149] Draining started stage tasks before lane exit",
+          );
+          await Promise.allSettled(spawned);
+          log.debug(
+            { projectId, stage: stage.label, taskCount: spawned.length },
+            "[FIX:149] Started stage tasks drained",
+          );
+        }
       }
     }
   }
