@@ -82,6 +82,15 @@ function getColumn(label: string): HTMLElement {
   return column;
 }
 
+function expectTaskBefore(column: HTMLElement, firstTitle: string, secondTitle: string): void {
+  const firstTask = within(column).getByText(firstTitle);
+  const secondTask = within(column).getByText(secondTitle);
+
+  expect(firstTask.compareDocumentPosition(secondTask) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+}
+
 describe("Board", () => {
   it("should render status columns", () => {
     render(<Board projectId="test-project" onTaskClick={vi.fn()} density="comfortable" />, {
@@ -127,6 +136,7 @@ describe("Board", () => {
       const taskList = getColumn(label).lastElementChild;
       expect(taskList?.className).toContain("max-h-[calc(100vh-");
       expect(taskList?.className).toContain("overflow-y-auto");
+      expect(taskList?.className).toContain("overscroll-y-contain");
     }
   });
 
@@ -155,11 +165,25 @@ describe("Board", () => {
         updatedAt: "2026-03-01T00:00:00.000Z",
       }),
       makeTask({
+        id: "done-invalid-later-position",
+        title: "Done Invalid Later Position",
+        status: "done",
+        position: 2000,
+        updatedAt: "not-a-date",
+      }),
+      makeTask({
         id: "done-older",
         title: "Done Older",
         status: "done",
         position: 1000,
         updatedAt: "2026-02-01T00:00:00.000Z",
+      }),
+      makeTask({
+        id: "done-invalid-earlier-position",
+        title: "Done Invalid Earlier Position",
+        status: "done",
+        position: 1500,
+        updatedAt: "also-not-a-date",
       }),
       makeTask({
         id: "planning-later-position",
@@ -182,18 +206,14 @@ describe("Board", () => {
     });
     mockTasks.splice(originalLength);
 
-    const verifiedText = getColumn("Verified").textContent ?? "";
-    expect(verifiedText.indexOf("Verified Newer")).toBeLessThan(
-      verifiedText.indexOf("Verified Older"),
-    );
+    expectTaskBefore(getColumn("Verified"), "Verified Newer", "Verified Older");
 
-    const doneText = getColumn("Done").textContent ?? "";
-    expect(doneText.indexOf("Done Newer")).toBeLessThan(doneText.indexOf("Done Older"));
+    const doneColumn = getColumn("Done");
+    expectTaskBefore(doneColumn, "Done Newer", "Done Older");
+    expectTaskBefore(doneColumn, "Done Older", "Done Invalid Earlier Position");
+    expectTaskBefore(doneColumn, "Done Invalid Earlier Position", "Done Invalid Later Position");
 
-    const planningText = getColumn("Planning").textContent ?? "";
-    expect(planningText.indexOf("Planning Earlier Position")).toBeLessThan(
-      planningText.indexOf("Planning Later Position"),
-    );
+    expectTaskBefore(getColumn("Planning"), "Planning Earlier Position", "Planning Later Position");
   });
 
   it("should render ownership badges", () => {

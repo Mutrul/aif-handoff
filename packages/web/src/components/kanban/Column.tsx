@@ -146,7 +146,7 @@ export function Column({
 
       <ScrollableContainer
         maxHeight="max-h-[calc(100vh-18rem)]"
-        className={`min-h-[100px] overscroll-contain pr-1 ${density === "compact" ? "space-y-1.5" : "space-y-2"}`}
+        className={`min-h-[100px] overscroll-y-contain pr-1 ${density === "compact" ? "space-y-1.5" : "space-y-2"}`}
       >
         {tasks.map((task, idx) => {
           const reorderProps =

@@ -34,6 +34,29 @@ const STATUS_ORDER = Object.fromEntries(
   ORDERED_STATUSES.map((status, idx) => [status, idx]),
 ) as Record<TaskStatus, number>;
 
+function compareByPositionThenId(a: TaskListItem, b: TaskListItem): number {
+  const positionDiff = a.position - b.position;
+  return positionDiff !== 0 ? positionDiff : a.id.localeCompare(b.id);
+}
+
+function compareTerminalTasks(a: TaskListItem, b: TaskListItem): number {
+  const aUpdatedAt = new Date(a.updatedAt).getTime();
+  const bUpdatedAt = new Date(b.updatedAt).getTime();
+  const hasValidAUpdatedAt = Number.isFinite(aUpdatedAt);
+  const hasValidBUpdatedAt = Number.isFinite(bUpdatedAt);
+
+  if (hasValidAUpdatedAt !== hasValidBUpdatedAt) {
+    return hasValidAUpdatedAt ? -1 : 1;
+  }
+
+  if (hasValidAUpdatedAt && hasValidBUpdatedAt) {
+    const updatedAtDiff = bUpdatedAt - aUpdatedAt;
+    if (updatedAtDiff !== 0) return updatedAtDiff;
+  }
+
+  return compareByPositionThenId(a, b);
+}
+
 export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: BoardProps) {
   const { data: tasks, isLoading } = useTasks(projectId);
   const isCompact = density === "compact";
@@ -130,23 +153,9 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
     }
 
     for (const status of ORDERED_STATUSES) {
-      grouped[status].sort((a, b) => {
-        if (TERMINAL_STATUSES.has(status)) {
-          const updatedAtDiff = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-          if (Number.isFinite(updatedAtDiff) && updatedAtDiff !== 0) return updatedAtDiff;
-        }
-
-        const positionDiff = a.position - b.position;
-        return positionDiff !== 0 ? positionDiff : a.id.localeCompare(b.id);
-      });
-
-      if (import.meta.env.DEV && TERMINAL_STATUSES.has(status) && grouped[status].length > 0) {
-        console.debug("[FIX:148] Sorted terminal column by recency", {
-          status,
-          taskCount: grouped[status].length,
-          newestTaskId: grouped[status][0]?.id,
-        });
-      }
+      grouped[status].sort(
+        TERMINAL_STATUSES.has(status) ? compareTerminalTasks : compareByPositionThenId,
+      );
     }
 
     return grouped;
@@ -254,7 +263,7 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
       )}
 
       {viewMode === "kanban" ? (
-        <div className="flex gap-4 overflow-x-auto pb-6">
+        <div data-testid="kanban-board" className="flex gap-4 overflow-x-auto pb-6">
           {ORDERED_STATUSES.map((status) => (
             <Column
               key={status}
