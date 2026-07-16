@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { tasks, projects, runtimeProfiles, resetEnvCache } from "@aif/shared";
+import { tasks, projects, runtimeProfiles, getEnv, resetEnvCache } from "@aif/shared";
 import { createTestDb } from "@aif/shared/server";
 import { RuntimeExecutionError } from "@aif/runtime";
 import { eq } from "drizzle-orm";
@@ -16,6 +16,7 @@ resetEnvCache();
 // Set up test db
 const testDb = { current: createTestDb() };
 const blockTaskForRuntimeGateIfEligibleMock = vi.fn();
+const claimCoordinatorTaskIfEligibleMock = vi.fn();
 
 vi.mock("@aif/shared/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@aif/shared/server")>();
@@ -30,11 +31,15 @@ vi.mock("@aif/data", async (importOriginal) => {
   blockTaskForRuntimeGateIfEligibleMock.mockImplementation(
     actual.blockTaskForRuntimeGateIfEligible,
   );
+  claimCoordinatorTaskIfEligibleMock.mockImplementation(actual.claimCoordinatorTaskIfEligible);
   return {
     ...actual,
     blockTaskForRuntimeGateIfEligible: (
       ...args: Parameters<typeof actual.blockTaskForRuntimeGateIfEligible>
     ) => blockTaskForRuntimeGateIfEligibleMock(...args),
+    claimCoordinatorTaskIfEligible: (
+      ...args: Parameters<typeof actual.claimCoordinatorTaskIfEligible>
+    ) => claimCoordinatorTaskIfEligibleMock(...args),
   };
 });
 
@@ -106,6 +111,24 @@ describe("coordinator", () => {
     vi.clearAllMocks();
     resetCoordinatorRuntimeCountersForTests();
     getStageSemaphore().reset();
+  });
+
+  it("should remove inactive project-stage semaphore keys", async () => {
+    const semaphore = getStageSemaphore();
+
+    await semaphore.acquire("project-1:planner", 2, 2);
+    await semaphore.acquire("project-1:planner", 2, 2);
+    expect(semaphore.totalActive()).toBe(2);
+    expect(semaphore.trackedKeyCount()).toBe(1);
+
+    semaphore.release("project-1:planner");
+    expect(semaphore.totalActive()).toBe(1);
+    expect(semaphore.trackedKeyCount()).toBe(1);
+
+    semaphore.release("project-1:planner");
+    semaphore.release("missing:planner");
+    expect(semaphore.totalActive()).toBe(0);
+    expect(semaphore.trackedKeyCount()).toBe(0);
   });
 
   function insertRuntimeProfile(input: {
@@ -1624,13 +1647,13 @@ describe("coordinator", () => {
     expect(proj!.parallelEnabled).toBe(true);
   });
 
-  it("should respect global max across stages (totalActive cap)", async () => {
+  it("should respect per-project task cap for a parallel-enabled project", async () => {
     const db = testDb.current;
     db.insert(projects)
       .values({ id: "cap-proj", name: "Cap", rootPath: "/tmp/cap", parallelEnabled: true })
       .run();
 
-    // Create 5 tasks in planning — globalMax is 3, so at most 3 should be picked
+    // Create 5 tasks in planning — per-project cap is 3, so at most 3 should be picked
     for (let i = 1; i <= 5; i++) {
       db.insert(tasks)
         .values({ id: `cap-task-${i}`, projectId: "cap-proj", title: `C${i}`, status: "planning" })
@@ -1642,9 +1665,597 @@ describe("coordinator", () => {
     // Semaphore should have released all slots after allSettled
     expect(getStageSemaphore().totalActive()).toBe(0);
 
-    // At most globalMax (3) planner calls should have been made
+    // At most the per-project cap (3) planner calls should have been made
     const plannerCalls = (runPlanner as any).mock.calls.length;
     expect(plannerCalls).toBeLessThanOrEqual(3);
     expect(plannerCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  it("should preserve the global task safety cap across project lanes", async () => {
+    const db = testDb.current;
+    const coordinatorEnv = getEnv();
+    const previousLimits = {
+      COORDINATOR_MAX_CONCURRENT_TASKS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS,
+      COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT:
+        coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_PROJECTS,
+    };
+
+    Object.assign(coordinatorEnv, {
+      COORDINATOR_MAX_CONCURRENT_TASKS: 2,
+      COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT: 2,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: 2,
+    });
+
+    try {
+      for (let projectIndex = 1; projectIndex <= 2; projectIndex++) {
+        const projectId = `global-cap-project-${projectIndex}`;
+        db.insert(projects)
+          .values({
+            id: projectId,
+            name: `Global cap ${projectIndex}`,
+            rootPath: `/tmp/global-cap-${projectIndex}`,
+            parallelEnabled: true,
+          })
+          .run();
+
+        for (let taskIndex = 1; taskIndex <= 2; taskIndex++) {
+          db.insert(tasks)
+            .values({
+              id: `global-cap-task-${projectIndex}-${taskIndex}`,
+              projectId,
+              title: `Task ${projectIndex}-${taskIndex}`,
+              status: "planning",
+            })
+            .run();
+        }
+      }
+
+      const startedProjectIds: string[] = [];
+      const releasePlanners: Array<() => void> = [];
+      let activePlanners = 0;
+      let peakActivePlanners = 0;
+
+      vi.mocked(runPlanner).mockImplementation((taskId) => {
+        const projectId = taskId.startsWith("global-cap-task-1-")
+          ? "global-cap-project-1"
+          : "global-cap-project-2";
+        startedProjectIds.push(projectId);
+        activePlanners += 1;
+        peakActivePlanners = Math.max(peakActivePlanners, activePlanners);
+
+        if (startedProjectIds.length > 2) {
+          activePlanners -= 1;
+          return Promise.resolve();
+        }
+
+        return new Promise<void>((resolve) => {
+          releasePlanners.push(() => {
+            activePlanners -= 1;
+            resolve();
+          });
+        });
+      });
+
+      const pollPromise = pollAndProcess();
+      try {
+        await vi.waitFor(() => expect(releasePlanners).toHaveLength(2));
+        expect(new Set(startedProjectIds)).toEqual(
+          new Set(["global-cap-project-1", "global-cap-project-2"]),
+        );
+        expect(peakActivePlanners).toBeLessThanOrEqual(2);
+      } finally {
+        for (const release of releasePlanners) release();
+        await pollPromise;
+      }
+
+      expect(getStageSemaphore().totalActive()).toBe(0);
+    } finally {
+      Object.assign(coordinatorEnv, previousLimits);
+    }
+  });
+
+  it("should not let a slow early stage in one project block review in another project", async () => {
+    const db = testDb.current;
+    db.insert(projects).values({ id: "slow-project", name: "Slow", rootPath: "/tmp/slow" }).run();
+    db.insert(projects)
+      .values({ id: "review-project", name: "Review", rootPath: "/tmp/review" })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "slow-planning-task",
+        projectId: "slow-project",
+        title: "Slow planning",
+        status: "planning",
+      })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "ready-review-task",
+        projectId: "review-project",
+        title: "Ready review",
+        status: "review",
+      })
+      .run();
+
+    let resolvePlanner: (() => void) | undefined;
+    vi.mocked(runPlanner).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePlanner = resolve;
+        }),
+    );
+
+    const pollPromise = pollAndProcess();
+    while (!resolvePlanner) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const reviewerStartedWhilePlannerPending = vi.mocked(runReviewer).mock.calls.length > 0;
+
+    resolvePlanner();
+    await pollPromise;
+
+    expect(reviewerStartedWhilePlannerPending).toBe(true);
+    expect(runReviewer).toHaveBeenCalledWith("ready-review-task", "/tmp/review");
+  });
+
+  it("should execute one coalesced follow-up cycle after an overlapping poll request", async () => {
+    const db = testDb.current;
+    db.insert(projects)
+      .values({
+        id: "active-cycle-project",
+        name: "Active cycle",
+        rootPath: "/tmp/active-cycle",
+        parallelEnabled: true,
+      })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "active-cycle-planning-task",
+        projectId: "active-cycle-project",
+        title: "Slow planning",
+        status: "planning",
+      })
+      .run();
+
+    let resolvePlanner: (() => void) | undefined;
+    vi.mocked(runPlanner).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePlanner = resolve;
+        }),
+    );
+
+    const firstPoll = pollAndProcess();
+    await vi.waitFor(() => expect(resolvePlanner).toBeTypeOf("function"));
+
+    db.insert(projects)
+      .values({
+        id: "follow-up-project",
+        name: "Follow-up",
+        rootPath: "/tmp/follow-up",
+      })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "follow-up-review-task",
+        projectId: "follow-up-project",
+        title: "Follow-up review",
+        status: "review",
+      })
+      .run();
+
+    const secondPoll = pollAndProcess();
+    expect(secondPoll).toBe(firstPoll);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const reviewerStartedBeforePlannerFinished = vi
+      .mocked(runReviewer)
+      .mock.calls.some(([taskId]) => taskId === "follow-up-review-task");
+
+    resolvePlanner?.();
+    await Promise.all([firstPoll, secondPoll]);
+
+    expect(reviewerStartedBeforePlannerFinished).toBe(false);
+    expect(runReviewer).toHaveBeenCalledWith("follow-up-review-task", "/tmp/follow-up");
+  });
+
+  it("should skip a candidate paused while waiting for a global permit", async () => {
+    const db = testDb.current;
+    const coordinatorEnv = getEnv();
+    const previousLimits = {
+      COORDINATOR_MAX_CONCURRENT_TASKS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_PROJECTS,
+    };
+    let releasePlanner: (() => void) | undefined;
+
+    Object.assign(coordinatorEnv, {
+      COORDINATOR_MAX_CONCURRENT_TASKS: 1,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: 2,
+    });
+
+    try {
+      db.insert(projects)
+        .values({ id: "permit-holder-project", name: "Holder", rootPath: "/tmp/holder" })
+        .run();
+      db.insert(projects)
+        .values({ id: "stale-candidate-project", name: "Stale", rootPath: "/tmp/stale" })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "permit-holder-task",
+          projectId: "permit-holder-project",
+          title: "Permit holder",
+          status: "planning",
+          createdAt: "2026-07-15T00:00:00.000Z",
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "stale-review-task",
+          projectId: "stale-candidate-project",
+          title: "Stale review",
+          status: "review",
+          createdAt: "2026-07-15T00:01:00.000Z",
+        })
+        .run();
+
+      vi.mocked(runPlanner).mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releasePlanner = resolve;
+          }),
+      );
+
+      const pollPromise = pollAndProcess();
+      await vi.waitFor(() => expect(releasePlanner).toBeTypeOf("function"));
+      expect(getStageSemaphore().totalActive()).toBe(1);
+      await vi.waitFor(() => expect(getStageSemaphore().waitingCount()).toBe(1));
+
+      db.update(tasks).set({ paused: true }).where(eq(tasks.id, "stale-review-task")).run();
+
+      releasePlanner?.();
+      await pollPromise;
+
+      expect(runReviewer).not.toHaveBeenCalledWith("stale-review-task", "/tmp/stale");
+      expect(db.select().from(tasks).where(eq(tasks.id, "stale-review-task")).get()).toMatchObject({
+        status: "review",
+        paused: true,
+      });
+      expect(getStageSemaphore().totalActive()).toBe(0);
+    } finally {
+      releasePlanner?.();
+      Object.assign(coordinatorEnv, previousLimits);
+    }
+  });
+
+  it("should re-evaluate the runtime gate after waiting for a global permit", async () => {
+    const db = testDb.current;
+    const coordinatorEnv = getEnv();
+    const previousLimits = {
+      COORDINATOR_MAX_CONCURRENT_TASKS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_PROJECTS,
+    };
+    let releasePlanner: (() => void) | undefined;
+    Object.assign(coordinatorEnv, {
+      COORDINATOR_MAX_CONCURRENT_TASKS: 1,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: 2,
+    });
+
+    try {
+      const resetAt = new Date(Date.now() + 30 * 60_000).toISOString();
+      db.insert(projects)
+        .values({ id: "runtime-holder-project", name: "Holder", rootPath: "/tmp/runtime-holder" })
+        .run();
+      db.insert(projects)
+        .values({
+          id: "runtime-waiter-project",
+          name: "Waiter",
+          rootPath: "/tmp/runtime-waiter",
+          defaultReviewRuntimeProfileId: "runtime-wait-profile",
+        })
+        .run();
+      insertRuntimeProfile({
+        id: "runtime-wait-profile",
+        projectId: "runtime-waiter-project",
+        snapshot: {
+          source: "sdk_event",
+          status: "available",
+          precision: "heuristic",
+          checkedAt: "2026-07-15T00:00:00.000Z",
+          providerId: "anthropic",
+          runtimeId: "claude",
+          profileId: "runtime-wait-profile",
+          primaryScope: "time",
+          resetAt: null,
+          retryAfterSeconds: null,
+          warningThreshold: null,
+          windows: [],
+          providerMeta: null,
+        },
+      });
+      db.insert(tasks)
+        .values({
+          id: "runtime-holder-task",
+          projectId: "runtime-holder-project",
+          title: "Runtime holder",
+          status: "planning",
+          createdAt: "2026-07-15T00:00:00.000Z",
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "runtime-waiter-task",
+          projectId: "runtime-waiter-project",
+          title: "Runtime waiter",
+          status: "review",
+          createdAt: "2026-07-15T00:01:00.000Z",
+        })
+        .run();
+      vi.mocked(runPlanner).mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releasePlanner = resolve;
+          }),
+      );
+
+      const pollPromise = pollAndProcess();
+      await vi.waitFor(() => expect(releasePlanner).toBeTypeOf("function"));
+      await vi.waitFor(() => expect(getStageSemaphore().waitingCount()).toBe(1));
+
+      db.update(runtimeProfiles)
+        .set({
+          runtimeLimitSnapshotJson: JSON.stringify({
+            source: "sdk_event",
+            status: "blocked",
+            precision: "heuristic",
+            checkedAt: new Date().toISOString(),
+            providerId: "anthropic",
+            runtimeId: "claude",
+            profileId: "runtime-wait-profile",
+            primaryScope: "time",
+            resetAt,
+            retryAfterSeconds: null,
+            warningThreshold: null,
+            windows: [{ scope: "time", resetAt }],
+            providerMeta: null,
+          }),
+          runtimeLimitUpdatedAt: new Date().toISOString(),
+        })
+        .where(eq(runtimeProfiles.id, "runtime-wait-profile"))
+        .run();
+
+      releasePlanner?.();
+      await pollPromise;
+
+      expect(runReviewer).not.toHaveBeenCalledWith("runtime-waiter-task", "/tmp/runtime-waiter");
+      expect(
+        db.select().from(tasks).where(eq(tasks.id, "runtime-waiter-task")).get(),
+      ).toMatchObject({
+        status: "blocked_external",
+        blockedFromStatus: "review",
+      });
+      expect(getStageSemaphore().totalActive()).toBe(0);
+    } finally {
+      releasePlanner?.();
+      Object.assign(coordinatorEnv, previousLimits);
+    }
+  });
+
+  it("should release the global permit and unblock a queued lane when task claim throws", async () => {
+    const db = testDb.current;
+    const coordinatorEnv = getEnv();
+    const previousLimits = {
+      COORDINATOR_MAX_CONCURRENT_TASKS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_PROJECTS,
+    };
+    Object.assign(coordinatorEnv, {
+      COORDINATOR_MAX_CONCURRENT_TASKS: 1,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: 2,
+    });
+
+    try {
+      db.insert(projects)
+        .values({ id: "queued-claim-project", name: "Queued claim", rootPath: "/tmp/queued" })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "throwing-claim-task",
+          projectId: "test-project",
+          title: "Throwing claim",
+          status: "planning",
+          createdAt: "2026-07-15T00:00:00.000Z",
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "queued-claim-task",
+          projectId: "queued-claim-project",
+          title: "Queued claim",
+          status: "planning",
+          createdAt: "2026-07-15T00:01:00.000Z",
+        })
+        .run();
+      claimCoordinatorTaskIfEligibleMock.mockImplementationOnce(() => {
+        throw new Error("claim failed");
+      });
+
+      await pollAndProcess();
+
+      expect(runPlanner).toHaveBeenCalledWith("queued-claim-task", "/tmp/queued");
+      expect(getStageSemaphore().totalActive()).toBe(0);
+      expect(getStageSemaphore().trackedKeyCount()).toBe(0);
+
+      await pollAndProcess();
+
+      expect(runPlanner).toHaveBeenCalledWith("throwing-claim-task", "/tmp/test");
+      expect(getStageSemaphore().totalActive()).toBe(0);
+    } finally {
+      Object.assign(coordinatorEnv, previousLimits);
+    }
+  });
+
+  it("should drain started lane tasks before propagating a later candidate setup failure", async () => {
+    const db = testDb.current;
+    const coordinatorEnv = getEnv();
+    const previousLimits = {
+      COORDINATOR_MAX_CONCURRENT_TASKS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS,
+      COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT:
+        coordinatorEnv.COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: coordinatorEnv.COORDINATOR_MAX_CONCURRENT_PROJECTS,
+    };
+    let releasePlanner: (() => void) | undefined;
+    let pollPromise: Promise<void> | undefined;
+
+    Object.assign(coordinatorEnv, {
+      COORDINATOR_MAX_CONCURRENT_TASKS: 2,
+      COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT: 2,
+      COORDINATOR_MAX_CONCURRENT_PROJECTS: 1,
+    });
+
+    try {
+      db.update(projects)
+        .set({ parallelEnabled: true })
+        .where(eq(projects.id, "test-project"))
+        .run();
+      db.insert(tasks)
+        .values([
+          {
+            id: "lane-drain-planning-1",
+            projectId: "test-project",
+            title: "Running planner",
+            status: "planning",
+            createdAt: "2026-07-16T00:00:00.000Z",
+          },
+          {
+            id: "lane-drain-planning-2",
+            projectId: "test-project",
+            title: "Throwing setup",
+            status: "planning",
+            createdAt: "2026-07-16T00:01:00.000Z",
+          },
+          {
+            id: "lane-drain-review",
+            projectId: "test-project",
+            title: "Later review",
+            status: "review",
+            createdAt: "2026-07-16T00:02:00.000Z",
+          },
+        ])
+        .run();
+
+      vi.mocked(runPlanner).mockImplementation((taskId) => {
+        if (taskId !== "lane-drain-planning-1") return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          releasePlanner = resolve;
+        });
+      });
+
+      const actualClaim = claimCoordinatorTaskIfEligibleMock.getMockImplementation();
+      if (!actualClaim) throw new Error("Expected real coordinator claim implementation");
+      claimCoordinatorTaskIfEligibleMock
+        .mockImplementationOnce(actualClaim)
+        .mockImplementationOnce(() => {
+          throw new Error("second candidate claim failed");
+        });
+
+      let pollSettled = false;
+      pollPromise = pollAndProcess();
+      void pollPromise.finally(() => {
+        pollSettled = true;
+      });
+
+      await vi.waitFor(() => expect(releasePlanner).toBeTypeOf("function"));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(pollSettled).toBe(false);
+
+      const overlappingPoll = pollAndProcess();
+      expect(overlappingPoll).toBe(pollPromise);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(runReviewer).not.toHaveBeenCalledWith("lane-drain-review", "/tmp/test");
+
+      releasePlanner?.();
+      await Promise.all([pollPromise, overlappingPoll]);
+
+      await pollAndProcess();
+
+      expect(runReviewer).toHaveBeenCalledWith("lane-drain-review", "/tmp/test");
+      expect(getStageSemaphore().totalActive()).toBe(0);
+    } finally {
+      releasePlanner?.();
+      if (pollPromise) await pollPromise;
+      Object.assign(coordinatorEnv, previousLimits);
+    }
+  });
+
+  it("should release an owner claim when the claim path throws after writing the lock", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "post-write-claim-error",
+        projectId: "test-project",
+        title: "Post-write claim error",
+        status: "planning",
+      })
+      .run();
+
+    const actualClaim = claimCoordinatorTaskIfEligibleMock.getMockImplementation();
+    if (!actualClaim) throw new Error("Expected real coordinator claim implementation");
+    let claimWasWritten = false;
+    claimCoordinatorTaskIfEligibleMock.mockImplementationOnce((...args) => {
+      claimWasWritten = actualClaim(...args) != null;
+      throw new Error("claim result conversion failed");
+    });
+
+    await pollAndProcess();
+
+    expect(claimWasWritten).toBe(true);
+    expect(
+      db.select().from(tasks).where(eq(tasks.id, "post-write-claim-error")).get(),
+    ).toMatchObject({
+      lockedBy: null,
+      lockedUntil: null,
+    });
+    expect(getStageSemaphore().totalActive()).toBe(0);
+  });
+
+  it("should start one task in each independent project lane beyond the per-project task cap", async () => {
+    const db = testDb.current;
+    for (let i = 1; i <= 4; i++) {
+      db.insert(projects)
+        .values({ id: `lane-project-${i}`, name: `Lane ${i}`, rootPath: `/tmp/lane-${i}` })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: `lane-task-${i}`,
+          projectId: `lane-project-${i}`,
+          title: `Lane task ${i}`,
+          status: "planning",
+        })
+        .run();
+    }
+
+    const startedTaskIds: string[] = [];
+    const releasePlanners: Array<() => void> = [];
+    vi.mocked(runPlanner).mockImplementation(
+      (taskId) =>
+        new Promise<void>((resolve) => {
+          startedTaskIds.push(taskId);
+          releasePlanners.push(resolve);
+        }),
+    );
+
+    const pollPromise = pollAndProcess();
+    try {
+      await vi.waitFor(() => expect(releasePlanners).toHaveLength(4));
+
+      for (let i = 1; i <= 4; i++) {
+        expect(startedTaskIds).toContain(`lane-task-${i}`);
+      }
+    } finally {
+      for (const release of releasePlanners) release();
+      await pollPromise;
+    }
   });
 });

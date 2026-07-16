@@ -54,7 +54,10 @@ const {
   persistTaskPlanForTask,
   findCoordinatorTaskCandidate,
   findCoordinatorTaskCandidates,
+  findCoordinatorTaskCandidatesForProject,
+  listCoordinatorActionableProjectIds,
   claimTask,
+  claimCoordinatorTaskIfEligible,
   releaseTaskClaim,
   releaseStaleTaskClaims,
   hasActiveLockedTaskForProject,
@@ -892,6 +895,75 @@ describe("data layer", () => {
       expect(candidates).toHaveLength(1);
       expect(candidates[0].id).toBe("stale-lock");
     });
+
+    it("returns empty project-scoped candidates and lanes when no tasks are actionable", () => {
+      expect(findCoordinatorTaskCandidatesForProject("proj-1", "planner", 10)).toEqual([]);
+      expect(listCoordinatorActionableProjectIds(10)).toEqual([]);
+    });
+
+    it("returns candidates for one project without being crowded by another project", () => {
+      const db = testDb.current;
+      db.insert(projects)
+        .values({ id: "proj-2", name: "Project 2", rootPath: "/tmp/proj-2" })
+        .run();
+      db.insert(tasks)
+        .values({ id: "p1-task", projectId: "proj-1", title: "P1", status: "planning", position: 10 })
+        .run();
+      db.insert(tasks)
+        .values({ id: "p2-task", projectId: "proj-2", title: "P2", status: "planning", position: 1 })
+        .run();
+
+      const candidates = findCoordinatorTaskCandidatesForProject("proj-1", "planner", 10);
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].id).toBe("p1-task");
+    });
+
+    it("lists actionable project lanes ordered by oldest waiting task", () => {
+      const db = testDb.current;
+      const oldest = "2026-01-01T00:00:00.000Z";
+      const newer = "2026-01-02T00:00:00.000Z";
+      db.insert(projects)
+        .values({ id: "proj-2", name: "Project 2", rootPath: "/tmp/proj-2" })
+        .run();
+      db.insert(projects)
+        .values({ id: "proj-3", name: "Project 3", rootPath: "/tmp/proj-3" })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "newer-low-position",
+          projectId: "proj-1",
+          title: "Newer low position",
+          status: "planning",
+          position: 1,
+          createdAt: newer,
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "oldest-high-position",
+          projectId: "proj-2",
+          title: "Oldest high position",
+          status: "review",
+          position: 30,
+          createdAt: oldest,
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "locked",
+          projectId: "proj-3",
+          title: "Locked",
+          status: "planning",
+          position: 0,
+          lockedBy: "worker",
+          lockedUntil: new Date(Date.now() + 60_000).toISOString(),
+          createdAt: "2025-12-31T00:00:00.000Z",
+        })
+        .run();
+
+      expect(listCoordinatorActionableProjectIds(10)).toEqual(["proj-2", "proj-1"]);
+    });
   });
 
   // ── Task claiming ──────────────────────────────────────
@@ -934,6 +1006,138 @@ describe("data layer", () => {
     });
   });
 
+  describe("claimCoordinatorTaskIfEligible", () => {
+    it("atomically claims an eligible task and returns its fresh row", () => {
+      const db = testDb.current;
+      db.insert(tasks)
+        .values({
+          id: "coordinator-claim",
+          projectId: "proj-1",
+          title: "Original title",
+          status: "review",
+        })
+        .run();
+      db.update(tasks)
+        .set({ title: "Fresh title" })
+        .where(eq(tasks.id, "coordinator-claim"))
+        .run();
+
+      const claimed = claimCoordinatorTaskIfEligible({
+        taskId: "coordinator-claim",
+        expectedProjectId: "proj-1",
+        expectedStatus: "review",
+        coordinatorId: "coord-1",
+        lockDurationMs: 600_000,
+      });
+
+      expect(claimed).toMatchObject({
+        id: "coordinator-claim",
+        title: "Fresh title",
+        status: "review",
+        paused: false,
+        lockedBy: "coord-1",
+      });
+      expect(claimed?.lockedUntil).toBeTruthy();
+    });
+
+    it("rejects stale project, status, pause, auto-mode, lock, and missing-row snapshots", () => {
+      const db = testDb.current;
+      const future = new Date(Date.now() + 60_000).toISOString();
+      const candidates = [
+        {
+          id: "wrong-project",
+          values: { projectId: "proj-2", status: "review" as const },
+          expectedProjectId: "proj-1",
+          expectedStatus: "review" as const,
+        },
+        {
+          id: "wrong-status",
+          values: { projectId: "proj-1", status: "done" as const },
+          expectedProjectId: "proj-1",
+          expectedStatus: "review" as const,
+        },
+        {
+          id: "paused",
+          values: { projectId: "proj-1", status: "review" as const, paused: true },
+          expectedProjectId: "proj-1",
+          expectedStatus: "review" as const,
+        },
+        {
+          id: "auto-mode-changed",
+          values: { projectId: "proj-1", status: "plan_ready" as const, autoMode: false },
+          expectedProjectId: "proj-1",
+          expectedStatus: "plan_ready" as const,
+          expectedAutoMode: true,
+        },
+        {
+          id: "actively-locked",
+          values: {
+            projectId: "proj-1",
+            status: "review" as const,
+            lockedBy: "other-coordinator",
+            lockedUntil: future,
+          },
+          expectedProjectId: "proj-1",
+          expectedStatus: "review" as const,
+        },
+      ];
+
+      for (const candidate of candidates) {
+        db.insert(tasks)
+          .values({ id: candidate.id, title: candidate.id, ...candidate.values })
+          .run();
+
+        expect(
+          claimCoordinatorTaskIfEligible({
+            taskId: candidate.id,
+            expectedProjectId: candidate.expectedProjectId,
+            expectedStatus: candidate.expectedStatus,
+            expectedAutoMode: candidate.expectedAutoMode,
+            coordinatorId: "coord-1",
+            lockDurationMs: 600_000,
+          }),
+        ).toBeUndefined();
+        expect(findTaskById(candidate.id)?.lockedBy).toBe(
+          "lockedBy" in candidate.values ? candidate.values.lockedBy : null,
+        );
+      }
+
+      expect(
+        claimCoordinatorTaskIfEligible({
+          taskId: "missing-task",
+          expectedProjectId: "proj-1",
+          expectedStatus: "review",
+          coordinatorId: "coord-1",
+          lockDurationMs: 600_000,
+        }),
+      ).toBeUndefined();
+    });
+
+    it("claims an eligible task with an expired lock", () => {
+      const db = testDb.current;
+      db.insert(tasks)
+        .values({
+          id: "expired-coordinator-claim",
+          projectId: "proj-1",
+          title: "Expired coordinator claim",
+          status: "planning",
+          lockedBy: "dead-coordinator",
+          lockedUntil: new Date(Date.now() - 1_000).toISOString(),
+        })
+        .run();
+
+      const claimed = claimCoordinatorTaskIfEligible({
+        taskId: "expired-coordinator-claim",
+        expectedProjectId: "proj-1",
+        expectedStatus: "planning",
+        coordinatorId: "coord-1",
+        lockDurationMs: 600_000,
+      });
+
+      expect(claimed?.lockedBy).toBe("coord-1");
+    });
+  });
+
   describe("releaseTaskClaim", () => {
     it("clears lock fields", () => {
       const db = testDb.current;
@@ -945,6 +1149,25 @@ describe("data layer", () => {
       const task = findTaskById("release-me");
       expect(task!.lockedBy).toBeNull();
       expect(task!.lockedUntil).toBeNull();
+    });
+
+    it("does not clear a claim owned by another coordinator", () => {
+      const db = testDb.current;
+      const future = new Date(Date.now() + 3600000).toISOString();
+      db.insert(tasks)
+        .values({
+          id: "owned-release",
+          projectId: "proj-1",
+          title: "Owned release",
+          status: "planning",
+          lockedBy: "coord-2",
+          lockedUntil: future,
+        })
+        .run();
+
+      releaseTaskClaim("owned-release", "coord-1");
+
+      expect(findTaskById("owned-release")?.lockedBy).toBe("coord-2");
     });
   });
 
