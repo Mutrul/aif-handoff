@@ -133,6 +133,8 @@ GET /projects
     "planCheckerMaxBudgetUsd": 2,
     "implementerMaxBudgetUsd": 15,
     "reviewSidecarMaxBudgetUsd": 2,
+    "pinnedAt": "2026-01-02T00:00:00.000Z",
+    "groupName": "Platform",
     "createdAt": "2026-01-01T00:00:00.000Z",
     "updatedAt": "2026-01-01T00:00:00.000Z"
   }
@@ -154,6 +156,7 @@ This endpoint does not return full task rows.
 [
   {
     "projectId": "uuid",
+    "lastActivityAt": "2026-01-03T12:00:00.000Z",
     "totalTasks": 12,
     "completedTasks": 2,
     "verifiedTasks": 0,
@@ -195,7 +198,8 @@ This endpoint does not return full task rows.
 that is not `backlog`, `done`, or `verified`. `blockedTasks` counts
 `blocked_external`. `statusPreviews` lists are small (bounded in SQL) and
 include only task id/title pairs — never plan text, logs, or other detail-only
-fields.
+fields. `lastActivityAt` is the latest task `updatedAt` timestamp for the
+project, or `null` when the project has no tasks.
 
 ### Create Project
 
@@ -228,6 +232,30 @@ PUT /projects/:id
 **Body:** Same as Create Project.
 
 **Response:** `200 OK` — the updated project object.
+
+### Update Project Organization
+
+```
+PATCH /projects/:id/organization
+```
+
+Updates picker-only organization metadata without requiring the project's name
+or root path.
+
+**Body:**
+
+| Field       | Type         | Required | Description                                                             |
+| ----------- | ------------ | -------- | ----------------------------------------------------------------------- |
+| `pinned`    | boolean      | no       | Pin or unpin the project. Pinning preserves the original pin timestamp. |
+| `groupName` | string\|null | no       | Flat picker group (max 100 chars); `null` or an empty string clears it. |
+
+At least one field is required.
+
+**Response:** `200 OK` — the updated project object. Returns `404` when the
+project does not exist.
+
+**WebSocket event:** `project:organization_updated` with the full project
+object.
 
 Parallel auto-queue with `git.create_branches=true` requires
 `AIF_TASK_WORKTREES_ENABLED=true`. With the default `false`, the API rejects
@@ -1283,6 +1311,7 @@ All events are JSON with this structure:
 | Event                             | Payload                                                                                            | Triggered By                                                                         |
 | --------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `project:created`                 | Full project object                                                                                | `POST /projects`                                                                     |
+| `project:organization_updated`    | Full project object                                                                                | `PATCH /projects/:id/organization`                                                   |
 | `task:created`                    | Full task object                                                                                   | `POST /tasks`, `POST /projects/:id/roadmap/import`                                   |
 | `task:updated`                    | Full task object                                                                                   | `PUT /tasks/:id`, `PATCH /tasks/:id/position`, `POST /tasks/:id/events` (`fast_fix`) |
 | `task:moved`                      | Full task object                                                                                   | `POST /tasks/:id/events`                                                             |

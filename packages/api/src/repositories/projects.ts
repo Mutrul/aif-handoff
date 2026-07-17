@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, posix, relative, resolve, sep, win32 } from "node:path";
 import { initProject } from "@aif/runtime";
 import { validateProjectRootPath, logger } from "@aif/shared";
+import type { UpdateProjectOrganizationInput } from "@aif/shared";
 import { getApiRuntimeRegistry } from "../services/runtime.js";
 import {
   createProject as createProjectRecord,
@@ -11,6 +12,7 @@ import {
   listProjects,
   type ProjectRow,
   updateProject as updateProjectRecord,
+  updateProjectOrganization as updateProjectOrganizationRecord,
 } from "@aif/data";
 
 const log = logger("projects-repo");
@@ -141,6 +143,13 @@ export function updateProject(
 
 export function deleteProject(id: string): void {
   deleteProjectRecord(id);
+}
+
+export function updateProjectOrganization(
+  id: string,
+  input: UpdateProjectOrganizationInput,
+): ProjectRow | undefined {
+  return updateProjectOrganizationRecord(id, input);
 }
 
 export function getProjectMcpServers(projectId: string): Record<string, unknown> {

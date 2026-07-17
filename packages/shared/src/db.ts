@@ -48,6 +48,8 @@ function ensureTables(sqlite: Database.Database): void {
       plan_checker_max_budget_usd REAL,
       implementer_max_budget_usd REAL,
       review_sidecar_max_budget_usd REAL,
+      pinned_at TEXT,
+      group_name TEXT,
       parallel_enabled INTEGER NOT NULL DEFAULT 0,
       auto_queue_mode INTEGER NOT NULL DEFAULT 0,
       default_task_runtime_profile_id TEXT,
@@ -730,6 +732,14 @@ const MIGRATIONS: Migration[] = [
     sql: `
       ALTER TABLE tasks ADD COLUMN run_plan_improve INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE tasks ADD COLUMN run_post_verify INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
+  {
+    version: 25,
+    description: "Add project pinning and flat grouping",
+    sql: `
+      ALTER TABLE projects ADD COLUMN pinned_at TEXT;
+      ALTER TABLE projects ADD COLUMN group_name TEXT;
     `,
   },
 ];

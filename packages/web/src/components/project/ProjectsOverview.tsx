@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Project, ProjectTaskOverview, TaskStatus } from "@aif/shared/browser";
 import { STATUS_CONFIG } from "@aif/shared/browser";
 import { Card } from "@/components/ui/card";
@@ -9,8 +9,10 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { StatusDot } from "@/components/ui/status-dot";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Metric } from "@/components/ui/metric";
+import { Select } from "@/components/ui/select";
 import { useProjectTaskOverviews } from "@/hooks/useProjects";
 import { calculateProjectOverviewMetrics } from "@/lib/taskMetrics";
+import { PROJECT_SORT_OPTIONS, sortProjects, type ProjectSort } from "@/lib/projectSorting";
 
 const integerFmt = new Intl.NumberFormat("en-US");
 const usdFmt = new Intl.NumberFormat("en-US", {
@@ -46,6 +48,7 @@ const OVERVIEW_STATUSES: TaskStatus[] = [
 const PREVIEW_LIMIT = 3;
 
 export function ProjectsOverview({ projects, onSelectProject }: ProjectsOverviewProps) {
+  const [projectSort, setProjectSort] = useState<ProjectSort>("name");
   const { data: projectTaskOverviews, isLoading } = useProjectTaskOverviews(projects.length > 0);
   const overviewByProjectId = useMemo(() => {
     const map = new Map<string, ProjectTaskOverview>();
@@ -54,6 +57,10 @@ export function ProjectsOverview({ projects, onSelectProject }: ProjectsOverview
     }
     return map;
   }, [projectTaskOverviews]);
+  const sortedProjects = useMemo(
+    () => sortProjects(projects, projectSort, overviewByProjectId),
+    [overviewByProjectId, projectSort, projects],
+  );
 
   if (!projects.length) {
     return (
@@ -69,9 +76,18 @@ export function ProjectsOverview({ projects, onSelectProject }: ProjectsOverview
       <SectionHeader
         className="mb-4"
         action={
-          <Badge variant="outline" size="sm">
-            {projects.length} project{projects.length === 1 ? "" : "s"}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Select
+              value={projectSort}
+              options={[...PROJECT_SORT_OPTIONS]}
+              onChange={(event) => setProjectSort(event.target.value as ProjectSort)}
+              selectSize="sm"
+              className="w-36"
+            />
+            <Badge variant="outline" size="sm">
+              {projects.length} project{projects.length === 1 ? "" : "s"}
+            </Badge>
+          </div>
         }
       >
         Projects overview
@@ -79,13 +95,13 @@ export function ProjectsOverview({ projects, onSelectProject }: ProjectsOverview
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4">
-          {projects.map((p) => (
+          {sortedProjects.map((p) => (
             <Skeleton key={p.id} className="h-44 w-full" />
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
-          {projects.map((project) => {
+          {sortedProjects.map((project) => {
             const overview = overviewByProjectId.get(project.id);
             const metrics = calculateProjectOverviewMetrics(overview);
             const progress = Math.round(metrics.completionRate);

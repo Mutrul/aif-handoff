@@ -221,6 +221,11 @@ export function useWebSocket() {
         return;
       }
 
+      if (data.type === "project:organization_updated") {
+        queryClient.invalidateQueries({ queryKey: ["projects"] });
+        return;
+      }
+
       if (data.type === "project:runtime_limit_updated" && hasRuntimeLimitPayload(data.payload)) {
         invalidateRuntimeLimitQueries(queryClient, data.payload);
         if (typeof data.payload.taskId === "string" && data.payload.taskId.length > 0) {

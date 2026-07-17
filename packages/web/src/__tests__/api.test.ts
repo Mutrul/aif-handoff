@@ -36,4 +36,13 @@ describe("api client", () => {
     const [url] = fetchMock.mock.calls[0];
     expect(String(url)).toContain("/projects/overview");
   });
+
+  it("updates project organization with PATCH", async () => {
+    await api.updateProjectOrganization("project 1", { pinned: true, groupName: "Platform" });
+
+    const fetchMock = vi.mocked(fetch);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/projects/project%201/organization");
+    expect(init?.method).toBe("PATCH");
+  });
 });
