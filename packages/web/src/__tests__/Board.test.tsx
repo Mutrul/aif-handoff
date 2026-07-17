@@ -75,6 +75,22 @@ function Wrapper({ children }: { children: React.ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
+function getColumn(label: string): HTMLElement {
+  const heading = screen.getByRole("heading", { name: label });
+  const column = heading.parentElement?.parentElement?.parentElement;
+  if (!column) throw new Error(`Could not find column for ${label}`);
+  return column;
+}
+
+function expectTaskBefore(column: HTMLElement, firstTitle: string, secondTitle: string): void {
+  const firstTask = within(column).getByText(firstTitle);
+  const secondTask = within(column).getByText(secondTitle);
+
+  expect(firstTask.compareDocumentPosition(secondTask) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+}
+
 describe("Board", () => {
   it("should render status columns", () => {
     render(<Board projectId="test-project" onTaskClick={vi.fn()} density="comfortable" />, {
@@ -98,6 +114,106 @@ describe("Board", () => {
 
     expect(screen.getByText("Test Task 1")).toBeDefined();
     expect(screen.getByText("Test Task 2")).toBeDefined();
+  });
+
+  it("should bound every card list to the viewport with independent vertical scrolling", () => {
+    render(<Board projectId="test-project" onTaskClick={vi.fn()} density="comfortable" />, {
+      wrapper: Wrapper,
+    });
+
+    for (const label of [
+      "Backlog",
+      "Planning",
+      "Improve",
+      "Plan Ready",
+      "Implementing",
+      "Verify",
+      "Review",
+      "Blocked",
+      "Done",
+      "Verified",
+    ]) {
+      const taskList = getColumn(label).lastElementChild;
+      expect(taskList?.className).toContain("max-h-[calc(100vh-");
+      expect(taskList?.className).toContain("overflow-y-auto");
+      expect(taskList?.className).toContain("overscroll-y-contain");
+    }
+  });
+
+  it("should show newest terminal tasks first while preserving position order elsewhere", () => {
+    const originalLength = mockTasks.length;
+    mockTasks.push(
+      makeTask({
+        id: "verified-newer",
+        title: "Verified Newer",
+        status: "verified",
+        position: 3000,
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      }),
+      makeTask({
+        id: "verified-older",
+        title: "Verified Older",
+        status: "verified",
+        position: 1000,
+        updatedAt: "2026-02-01T00:00:00.000Z",
+      }),
+      makeTask({
+        id: "done-newer",
+        title: "Done Newer",
+        status: "done",
+        position: 3000,
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      }),
+      makeTask({
+        id: "done-invalid-later-position",
+        title: "Done Invalid Later Position",
+        status: "done",
+        position: 2000,
+        updatedAt: "not-a-date",
+      }),
+      makeTask({
+        id: "done-older",
+        title: "Done Older",
+        status: "done",
+        position: 1000,
+        updatedAt: "2026-02-01T00:00:00.000Z",
+      }),
+      makeTask({
+        id: "done-invalid-earlier-position",
+        title: "Done Invalid Earlier Position",
+        status: "done",
+        position: 1500,
+        updatedAt: "also-not-a-date",
+      }),
+      makeTask({
+        id: "planning-later-position",
+        title: "Planning Later Position",
+        status: "planning",
+        position: 3000,
+        updatedAt: "2026-04-01T00:00:00.000Z",
+      }),
+      makeTask({
+        id: "planning-earlier-position",
+        title: "Planning Earlier Position",
+        status: "planning",
+        position: 2000,
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      }),
+    );
+
+    render(<Board projectId="test-project" onTaskClick={vi.fn()} density="comfortable" />, {
+      wrapper: Wrapper,
+    });
+    mockTasks.splice(originalLength);
+
+    expectTaskBefore(getColumn("Verified"), "Verified Newer", "Verified Older");
+
+    const doneColumn = getColumn("Done");
+    expectTaskBefore(doneColumn, "Done Newer", "Done Older");
+    expectTaskBefore(doneColumn, "Done Older", "Done Invalid Earlier Position");
+    expectTaskBefore(doneColumn, "Done Invalid Earlier Position", "Done Invalid Later Position");
+
+    expectTaskBefore(getColumn("Planning"), "Planning Earlier Position", "Planning Later Position");
   });
 
   it("should render ownership badges", () => {
