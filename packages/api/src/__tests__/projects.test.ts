@@ -345,6 +345,74 @@ describe("projects API", () => {
     });
   });
 
+  it("maps Docker root aliases into the container project mount", async () => {
+    vi.stubEnv("PROJECTS_DIR", "D:\\domains");
+    vi.stubEnv("PROJECTS_MOUNT", "/home/www");
+    const { initProject: initProjectMock } = await import("@aif/runtime");
+
+    const res = await app.request("/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Docker Alias Project",
+        rootPath: "/a/b",
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.rootPath).toBe("/home/www/a/b");
+    expect(initProjectMock).toHaveBeenCalledWith({
+      projectRoot: "/home/www/a/b",
+      registry: expect.anything(),
+    });
+  });
+
+  it("keeps Docker container paths already inside the project mount", async () => {
+    vi.stubEnv("PROJECTS_MOUNT", "/home/www");
+    const { initProject: initProjectMock } = await import("@aif/runtime");
+
+    const res = await app.request("/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Docker Mounted Project",
+        rootPath: "/home/www/a/../b",
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.rootPath).toBe("/home/www/b");
+    expect(initProjectMock).toHaveBeenCalledWith({
+      projectRoot: "/home/www/b",
+      registry: expect.anything(),
+    });
+  });
+
+  it("keeps absolute paths unchanged outside Docker", async () => {
+    vi.stubEnv("PROJECTS_DIR", "");
+    vi.stubEnv("PROJECTS_MOUNT", "");
+    const { initProject: initProjectMock } = await import("@aif/runtime");
+
+    const res = await app.request("/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Native Project",
+        rootPath: "/a/b",
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.rootPath).toBe("/a/b");
+    expect(initProjectMock).toHaveBeenCalledWith({
+      projectRoot: "/a/b",
+      registry: expect.anything(),
+    });
+  });
+
   it("wires default Docker project mount env into the API service", () => {
     const compose = YAML.parse(readFileSync(join(repoRoot, "docker-compose.yml"), "utf-8"));
 
@@ -358,6 +426,21 @@ describe("projects API", () => {
     expect(compose.services.api.volumes).toEqual(
       expect.arrayContaining(["${PROJECTS_DIR:-${PWD}/projects}:${PROJECTS_MOUNT:-/home/www}"]),
     );
+  });
+
+  it("wires the Docker project mount env into production services", () => {
+    const compose = YAML.parse(
+      readFileSync(join(repoRoot, "docker-compose.production.yml"), "utf-8"),
+    );
+
+    for (const serviceName of ["api", "agent", "mcp"]) {
+      expect(compose.services[serviceName].environment).toContain(
+        "PROJECTS_MOUNT=${PROJECTS_MOUNT:-/home/www}",
+      );
+      expect(compose.services[serviceName].volumes).toContain(
+        "projects:${PROJECTS_MOUNT:-/home/www}",
+      );
+    }
   });
 
   it("maps Docker host project paths to the container project mount on update", async () => {
