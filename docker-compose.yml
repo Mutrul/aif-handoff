@@ -9,7 +9,7 @@ services:
         HTTPS_PROXY: ${HTTPS_PROXY:-}
         ALL_PROXY: ${ALL_PROXY:-}
         NO_PROXY: ${NO_PROXY:-}
-        CODEX_VERSION: ${CODEX_VERSION:-latest}
+        CODEX_VERSION: ${CODEX_VERSION:-0.145.0}
     ports:
       - "${PORT:-3009}:3009"
     env_file: .env
@@ -38,7 +38,7 @@ services:
         HTTPS_PROXY: ${HTTPS_PROXY:-}
         ALL_PROXY: ${ALL_PROXY:-}
         NO_PROXY: ${NO_PROXY:-}
-        CODEX_VERSION: ${CODEX_VERSION:-latest}
+        CODEX_VERSION: ${CODEX_VERSION:-0.145.0}
     ports:
       - "${WEB_PORT:-5180}:80"
     depends_on:
@@ -55,7 +55,7 @@ services:
         HTTPS_PROXY: ${HTTPS_PROXY:-}
         ALL_PROXY: ${ALL_PROXY:-}
         NO_PROXY: ${NO_PROXY:-}
-        CODEX_VERSION: ${CODEX_VERSION:-latest}
+        CODEX_VERSION: ${CODEX_VERSION:-0.145.0}
     env_file: .env
     environment:
       - DATABASE_URL=/data/aif.sqlite
@@ -88,7 +88,7 @@ services:
         HTTPS_PROXY: ${HTTPS_PROXY:-}
         ALL_PROXY: ${ALL_PROXY:-}
         NO_PROXY: ${NO_PROXY:-}
-        CODEX_VERSION: ${CODEX_VERSION:-latest}
+        CODEX_VERSION: ${CODEX_VERSION:-0.145.0}
     ports:
       - "${MCP_PORT:-3100}:3100"
     env_file: .env

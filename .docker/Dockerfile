@@ -22,7 +22,7 @@ COPY .docker/apt-install.sh /usr/local/bin/apt-install
 RUN chmod +x /usr/local/bin/apt-install
 
 FROM base AS codex
-ARG CODEX_VERSION=latest
+ARG CODEX_VERSION=0.145.0
 RUN npm install --prefix /opt/codex --ignore-scripts --no-save --package-lock=false "@openai/codex-sdk@${CODEX_VERSION}"
 
 # ---- Dependencies ----

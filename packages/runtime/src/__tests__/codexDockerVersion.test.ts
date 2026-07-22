@@ -10,14 +10,31 @@ const productionCompose = readFileSync(
   resolve(repositoryRoot, "docker-compose.production.yml"),
   "utf8",
 );
+const environmentExample = readFileSync(resolve(repositoryRoot, ".env.example"), "utf8");
+const configurationReference = readFileSync(
+  resolve(repositoryRoot, "docs/configuration.md"),
+  "utf8",
+);
+const readme = readFileSync(resolve(repositoryRoot, "README.md"), "utf8");
+const gettingStarted = readFileSync(resolve(repositoryRoot, "docs/getting-started.md"), "utf8");
+const providers = readFileSync(resolve(repositoryRoot, "docs/providers.md"), "utf8");
 const runtimePackage = JSON.parse(
   readFileSync(resolve(repositoryRoot, "packages/runtime/package.json"), "utf8"),
 ) as { dependencies: Record<string, string> };
+const packageLock = JSON.parse(
+  readFileSync(resolve(repositoryRoot, "package-lock.json"), "utf8"),
+) as { packages: Record<string, { dependencies?: Record<string, string> }> };
+const bunLock = readFileSync(resolve(repositoryRoot, "bun.lock"), "utf8");
+const reviewedCodexVersion = "0.145.0";
 
 describe("Docker Codex version resolution", () => {
-  it("resolves the SDK from the configured npm selector during the build", () => {
-    expect(runtimePackage.dependencies["@openai/codex-sdk"]).toBe("*");
-    expect(dockerfile).toContain("ARG CODEX_VERSION=latest");
+  it("defaults to the reviewed SDK version while retaining the build selector", () => {
+    expect(runtimePackage.dependencies["@openai/codex-sdk"]).toBe(reviewedCodexVersion);
+    expect(packageLock.packages["packages/runtime"].dependencies?.["@openai/codex-sdk"]).toBe(
+      reviewedCodexVersion,
+    );
+    expect(bunLock).toContain(`"@openai/codex-sdk": "${reviewedCodexVersion}"`);
+    expect(dockerfile).toContain(`ARG CODEX_VERSION=${reviewedCodexVersion}`);
     expect(dockerfile).toContain('"@openai/codex-sdk@${CODEX_VERSION}"');
     expect(dockerfile).toContain("--prefix /opt/codex");
     expect(dockerfile).toContain("--package-lock=false");
@@ -43,6 +60,31 @@ describe("Docker Codex version resolution", () => {
     ["development", developmentCompose],
     ["production", productionCompose],
   ])("passes CODEX_VERSION through every %s image build", (_name, compose) => {
-    expect(compose.match(/CODEX_VERSION: \$\{CODEX_VERSION:-latest\}/g)).toHaveLength(4);
+    expect(
+      compose.match(
+        new RegExp(`CODEX_VERSION: \\$\\{CODEX_VERSION:-${reviewedCodexVersion}\\}`, "g"),
+      ),
+    ).toHaveLength(4);
+  });
+
+  it("documents the reviewed default and intentional moving-selector rollout", () => {
+    expect(environmentExample).toContain(`CODEX_VERSION=${reviewedCodexVersion}`);
+    expect(readme).toContain(`defaults to the reviewed \`${reviewedCodexVersion}\` baseline`);
+    expect(gettingStarted.split("\n").find((line) => line.includes("| `CODEX_VERSION`"))).toContain(
+      `\`${reviewedCodexVersion}\``,
+    );
+    expect(providers).toContain(`(\`${reviewedCodexVersion}\` by default`);
+    const configurationRow = configurationReference
+      .split("\n")
+      .find((line) => line.includes("| `CODEX_VERSION`"));
+
+    expect(configurationRow).toBeDefined();
+    expect(configurationRow).toContain("| string");
+    expect(configurationRow).toContain(`| \`${reviewedCodexVersion}\``);
+    expect(configurationRow).toContain("build-time");
+    expect(configurationRow).toContain("dist-tags");
+    expect(configurationRow).toContain("exact versions");
+    expect(configurationRow).toContain("semver ranges");
+    expect(configurationRow).toContain("--no-cache");
   });
 });

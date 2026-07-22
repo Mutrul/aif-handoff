@@ -107,7 +107,7 @@ Docker-specific environment variables:
 | `PROJECTS_DIR`       | `./projects` | Host directory for project files (dev)                       |
 | `PROJECTS_MOUNT`     | `/home/www`  | Project files path inside containers                         |
 | `PROJECTS_HOST_ROOT` | `${PWD}`     | Compose-internal repo root for relative `PROJECTS_DIR` (dev) |
-| `CODEX_VERSION`      | `latest`     | npm selector used to install Codex SDK and CLI during build  |
+| `CODEX_VERSION`      | `0.145.0`    | npm selector used to install Codex SDK and CLI during build  |
 
 When running the dev Docker Compose setup, `PROJECTS_DIR` is the host directory
 mounted into the containers at `PROJECTS_MOUNT`. Paths outside that mount are
@@ -122,9 +122,10 @@ Production Compose uses a named Docker volume at `PROJECTS_MOUNT` instead of
 the dev bind mount. Portable paths use the same resolution in production.
 
 `CODEX_VERSION` accepts npm dist-tags, exact versions, and semver ranges. The
-SDK and its matching CLI dependency are resolved together during the Docker
-build. Use `docker compose build --no-cache` when a moving selector such as
-`latest` must be refreshed despite the Docker layer cache.
+reviewed `0.145.0` baseline is used by default. The SDK and its matching CLI
+dependency are resolved together during the Docker build. Use `docker compose
+build --no-cache` when a moving selector such as `latest` must be refreshed
+despite the Docker layer cache.
 
 ## Installation without Docker
 
