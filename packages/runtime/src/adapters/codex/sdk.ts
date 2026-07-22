@@ -29,6 +29,7 @@ import {
 } from "./permissions.js";
 import { getCodexSessionLimitSnapshot } from "./sessions.js";
 import { PROXY_ENV_VARS } from "../../proxyEnv.js";
+import { normalizeModelEffort } from "../../modelEffort.js";
 
 export interface CodexSdkLogger {
   debug?(context: Record<string, unknown>, message: string): void;
@@ -305,15 +306,9 @@ function buildThreadOptions(input: RuntimeRunInput, logger?: CodexSdkLogger): Th
   }
 
   // Reasoning effort
-  const effort = readString(options.modelReasoningEffort) ?? readString(hooks.modelReasoningEffort);
-  if (
-    effort === "minimal" ||
-    effort === "low" ||
-    effort === "medium" ||
-    effort === "high" ||
-    effort === "xhigh"
-  ) {
-    threadOpts.modelReasoningEffort = effort;
+  const effort = normalizeModelEffort(options.modelReasoningEffort ?? hooks.modelReasoningEffort);
+  if (effort) {
+    Reflect.set(threadOpts, "modelReasoningEffort", effort);
   }
 
   logger?.debug?.(

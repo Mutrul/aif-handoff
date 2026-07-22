@@ -111,6 +111,29 @@ describe("OpenCode API transport", () => {
     expect(events).toHaveLength(1);
   });
 
+  it("passes provider-advertised reasoning effort in the session message", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "session-effort",
+          time: { created: 1710000000, updated: 1710000001 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          info: { id: "message-effort", role: "assistant", time: 1710000002 },
+          parts: [{ type: "text", text: "ok" }],
+        }),
+      );
+
+    await runOpenCodeApi(createRunInput({ options: { reasoningEffort: " Max " } }));
+
+    const postBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)) as {
+      reasoningEffort?: string;
+    };
+    expect(postBody.reasoningEffort).toBe("max");
+  });
+
   it("uses long-running dispatcher for session messages when feature flag is enabled", async () => {
     vi.stubEnv("AIF_RUNTIME_OPENCODE_LONG_RUNNING_DISPATCHER_ENABLED", "true");
     resetEnvCache();
@@ -286,6 +309,47 @@ describe("OpenCode API transport", () => {
     expect(models).toHaveLength(2);
     expect(models[0].id).toBe("anthropic/claude-sonnet-4");
     expect(models[1].id).toBe("anthropic/claude-haiku-3-5");
+  });
+
+  it("maps OpenCode model variants to supported effort levels", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        providers: [
+          {
+            id: "openai",
+            models: {
+              "gpt-current": {
+                name: "GPT Current",
+                capabilities: { reasoning: true },
+                variants: {
+                  low: { reasoningEffort: "low" },
+                  max: { reasoningEffort: "max" },
+                  duplicate: { reasoningEffort: " low " },
+                  empty: { reasoningEffort: "" },
+                  disabled: { reasoningEffort: "ultra", disabled: true },
+                },
+              },
+            },
+          },
+        ],
+      }),
+    );
+
+    const models = await listOpenCodeApiModels({ runtimeId: "opencode" });
+
+    expect(models).toEqual([
+      {
+        id: "openai/gpt-current",
+        label: "GPT Current",
+        supportsStreaming: true,
+        metadata: {
+          providerID: "openai",
+          modelID: "gpt-current",
+          supportsEffort: true,
+          supportedEffortLevels: ["low", "max"],
+        },
+      },
+    ]);
   });
 
   it("lists sessions and maps fields", async () => {

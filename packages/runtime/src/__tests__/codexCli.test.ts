@@ -102,6 +102,23 @@ describe("codex cli transport", () => {
     expect(result.raw).toBe("plain output");
   });
 
+  it("passes provider-advertised reasoning effort without a static allowlist", async () => {
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const runPromise = runCodexCli(
+      createRunInput({ options: { modelReasoningEffort: " Ultra " } }),
+    );
+
+    const { cliArgs: args } = getSpawnInvocation();
+    expect(args).toContain('model_reasoning_effort="ultra"');
+
+    child.stdout.emit("data", "plain output");
+    child.emit("close", 0);
+
+    await runPromise;
+  });
+
   it("prepends execution.systemPromptAppend to stdin prompt (no --system-prompt CLI flag)", async () => {
     const child = createMockChildProcess();
     spawnMock.mockReturnValueOnce(child);

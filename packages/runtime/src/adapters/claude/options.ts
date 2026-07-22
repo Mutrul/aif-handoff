@@ -9,6 +9,7 @@ import type {
 import { isValidTrustToken } from "../../trust.js";
 import { buildClaudeHooks } from "./hooks.js";
 import { PROXY_ENV_VARS } from "../../proxyEnv.js";
+import { normalizeModelEffort } from "../../modelEffort.js";
 
 export interface ClaudeRuntimeExecutionOptions {
   maxBudgetUsd?: number | null;
@@ -298,12 +299,9 @@ const CLAUDE_NUMERIC_EFFORT_MAP: Record<number, ClaudeEffortLevel> = {
   4: "max",
 };
 
-export function normalizeClaudeEffort(rawEffort: unknown): ClaudeEffortLevel | null {
+export function normalizeClaudeEffort(rawEffort: unknown): string | null {
   if (typeof rawEffort === "string") {
-    const normalized = rawEffort.trim().toLowerCase();
-    return CLAUDE_EFFORT_LEVELS.includes(normalized as ClaudeEffortLevel)
-      ? (normalized as ClaudeEffortLevel)
-      : null;
+    return normalizeModelEffort(rawEffort);
   }
   if (typeof rawEffort === "number" && Number.isFinite(rawEffort)) {
     return CLAUDE_NUMERIC_EFFORT_MAP[Math.floor(rawEffort)] ?? null;
@@ -366,9 +364,8 @@ export function buildClaudeQueryOptions(
         runtimeId: input.runtimeId,
         providerId: input.providerId ?? "anthropic",
         incomingEffort: rawEffort,
-        acceptedEffortLevels: [...CLAUDE_EFFORT_LEVELS],
       },
-      "WARN [runtime:claude] Ignoring unsupported Claude effort option",
+      "WARN [runtime:claude] Ignoring invalid Claude effort option",
     );
   }
 

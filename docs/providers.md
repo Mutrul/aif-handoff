@@ -69,6 +69,19 @@ The API exposes effective selection endpoints:
 
 Capabilities are **transport-aware**: the same adapter may expose different capabilities depending on the selected transport. For example, Codex supports resume on SDK/CLI/App Server, session fork only on App Server, and session discovery on SDK/App Server. Use `resolveAdapterCapabilities(adapter, transport)` to get the effective set.
 
+### Model-specific effort discovery
+
+Reasoning effort is model metadata, not a runtime-wide enum. The profile form reads the supported values from the currently selected model:
+
+| Runtime    | Discovery source                             | Profile option         |
+| ---------- | -------------------------------------------- | ---------------------- |
+| Claude     | Agent SDK `supportedModels()`                | `effort`               |
+| Codex      | App Server `model/list` reasoning efforts    | `modelReasoningEffort` |
+| OpenCode   | Provider model `variants[*].reasoningEffort` | `reasoningEffort`      |
+| OpenRouter | `/models` `reasoning.supported_efforts`      | `effort`               |
+
+The adapter normalizes and deduplicates provider-advertised values without applying a fixed allowlist. A model with `supportsEffort: false` hides the control. If discovery cannot provide model-level effort metadata, the form uses the runtime-specific fallback list. Changing the selected model immediately recomputes the available values and clears a previously selected value that the new model does not support.
+
 ### Runtime Proxy Support
 
 All built-in runtime adapters understand `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` plus lowercase variants. SDK/CLI/App Server transports receive these variables in their curated child-process environment. API transports use an undici dispatcher directly, so native Node `fetch` does not silently bypass the configured proxy.
@@ -256,7 +269,7 @@ SDK-specific options:
 - `codexConfig` — JSON object of CLI config overrides (flattened to `--config` flags)
 - `sandboxMode` — one of `read-only`, `workspace-write`, `danger-full-access`
 - `approvalPolicy` — one of `untrusted`, `on-failure`, `on-request`, `never`
-- `modelReasoningEffort` — one of `minimal`, `low`, `medium`, `high`, `xhigh`
+- `modelReasoningEffort` — a reasoning effort advertised by the selected model; the UI discovers the available values at runtime
 - `codexSubagentStrategy` — `native` or `isolated`; native Codex subagents are additionally gated by `AIF_RUNTIME_CODEX_NATIVE_SUBAGENTS_ENABLED=true` and required `.codex` assets on disk. Leave unset or use `isolated` to keep the legacy fresh-session skill workflow.
 - `skipGitRepoCheck` — bypass the Codex guard that refuses to run outside a git repo (SDK, App Server, and CLI)
 
@@ -442,6 +455,7 @@ OpenRouter-specific options:
 - `httpReferer` — URL of your app, used for OpenRouter rankings and rate limit priority
 - `appTitle` — app name shown in OpenRouter dashboard (defaults to `AIF Handoff`)
 - `baseUrl` — custom endpoint (defaults to `https://openrouter.ai/api/v1`)
+- `effort` — a reasoning effort advertised for the selected model by the `/models` response
 
 Environment variables:
 
@@ -476,6 +490,7 @@ OpenCode-specific options:
 - `serverUsername` — Basic auth username for protected servers (defaults to `opencode`)
 - `serverPassword` — Basic auth password for protected servers (or set `OPENCODE_SERVER_PASSWORD`)
 - `timeoutMs` — Request timeout override for OpenCode API calls
+- `reasoningEffort` — a value derived from the selected model's OpenCode variants
 
 Environment variables:
 

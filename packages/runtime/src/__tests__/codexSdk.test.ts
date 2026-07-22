@@ -297,6 +297,24 @@ describe("runCodexSdk", () => {
     expect(mockStartThread).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-5.4" }));
   });
 
+  it("passes provider-advertised reasoning effort to thread options", async () => {
+    mockRunStreamed.mockResolvedValue({
+      events: createMockEvents([
+        { type: "thread.started", thread_id: "thread-effort" },
+        {
+          type: "turn.completed",
+          usage: { input_tokens: 0, output_tokens: 0, cached_input_tokens: 0 },
+        },
+      ]),
+    });
+
+    await runCodexSdk(createRunInput({ options: { modelReasoningEffort: " Ultra " } }));
+
+    expect(mockStartThread).toHaveBeenCalledWith(
+      expect.objectContaining({ modelReasoningEffort: "ultra" }),
+    );
+  });
+
   it("passes approval policy and sandbox mode from hooks to thread options (overriding non-bypass defaults)", async () => {
     mockRunStreamed.mockResolvedValue({
       events: createMockEvents([

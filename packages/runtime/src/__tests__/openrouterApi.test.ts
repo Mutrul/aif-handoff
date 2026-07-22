@@ -111,6 +111,17 @@ describe("OpenRouter API transport", () => {
       });
     });
 
+    it("passes provider-advertised reasoning effort without a static allowlist", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: "ok" } }] }));
+
+      await runOpenRouterApi(createRunInput({ options: { apiKey: "sk-test", effort: " Max " } }));
+
+      const body = JSON.parse(
+        String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body),
+      ) as { reasoning?: { effort?: string } };
+      expect(body.reasoning).toEqual({ effort: "max" });
+    });
+
     it("includes system prompt when provided", async () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse({
@@ -471,10 +482,15 @@ describe("OpenRouter API transport", () => {
               name: "Claude Sonnet 4",
               context_length: 200000,
               pricing: { prompt: "0.003", completion: "0.015" },
+              reasoning: {
+                supported_efforts: ["low", "max", " low ", ""],
+                default_effort: "max",
+              },
             },
             {
               id: "openai/gpt-4o",
               name: "GPT-4o",
+              reasoning: { supported_efforts: [] },
             },
           ],
         }),
@@ -492,7 +508,11 @@ describe("OpenRouter API transport", () => {
       expect(models[0].metadata).toEqual({
         contextLength: 200000,
         pricing: { prompt: "0.003", completion: "0.015" },
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "max"],
+        defaultEffort: "max",
       });
+      expect(models[1].metadata).toMatchObject({ supportsEffort: false });
     });
 
     it("returns empty array when data is missing", async () => {

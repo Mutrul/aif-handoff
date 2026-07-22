@@ -1,4 +1,5 @@
 import type { RuntimeRunInput, RuntimeRunResult, RuntimeSessionForkInput } from "../../../types.js";
+import { normalizeModelEffort } from "../../../modelEffort.js";
 import {
   isRetriableTimeoutError,
   makeProcessRunTimeoutError,
@@ -28,8 +29,6 @@ import {
 export type CodexAppServerRunLogger = CodexAppServerEventMapperLogger;
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 8_000;
-
-const CODEX_EFFORT_LEVELS = new Set<ReasoningEffort>(["minimal", "low", "medium", "high", "xhigh"]);
 
 type CodexAppServerJsonObject = { [key: string]: JsonValue };
 
@@ -736,11 +735,9 @@ function resolveCodexPermissionOverrides(
     normalizedValue: explicitSandbox,
   });
 
-  const rawEffort = readString(options.modelReasoningEffort)?.toLowerCase() ?? null;
-  const modelReasoningEffort =
-    rawEffort && CODEX_EFFORT_LEVELS.has(rawEffort as ReasoningEffort)
-      ? (rawEffort as ReasoningEffort)
-      : null;
+  const modelReasoningEffort = normalizeModelEffort(
+    options.modelReasoningEffort,
+  ) as ReasoningEffort | null;
   const approvalPolicy = explicitApproval === "on-failure" ? "on-request" : explicitApproval;
 
   if (explicitApproval === "on-failure") {

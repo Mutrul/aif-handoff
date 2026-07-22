@@ -198,6 +198,33 @@ describe("codex app-server run transport", () => {
     );
   });
 
+  it("passes provider-advertised reasoning effort without a static allowlist", async () => {
+    const logger = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    const result = await runCodexAppServer(
+      createRunInput({
+        options: {
+          testScenario: "run-success",
+          approvalPolicy: "on-request",
+          sandboxMode: "workspace-write",
+          modelReasoningEffort: " Ultra ",
+        },
+      }),
+      logger,
+    );
+
+    expect(result.outputText).toContain("Hello from fake app-server");
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({ hasReasoningEffort: true }),
+      "DEBUG [runtime:codex] Resolved app-server approval and sandbox settings",
+    );
+  });
+
   it("uses thread/resume for resumed turns and keeps the existing thread id", async () => {
     const result = await runCodexAppServer(
       createRunInput(
