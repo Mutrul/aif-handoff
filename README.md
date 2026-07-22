@@ -86,6 +86,12 @@ docker compose exec agent claude login
 docker compose restart agent
 ```
 
+Docker resolves the Codex SDK and CLI during the image build. `CODEX_VERSION`
+defaults to the npm `latest` tag and also accepts an exact version or a semver
+range. When using a moving selector, rebuild with `docker compose build
+--no-cache` to force a fresh registry lookup. Verify the result with `docker
+compose exec agent codex --version`.
+
 Development starts three services by default. If `MCP_PORT` is set to a valid integer port, it starts a fourth service for MCP over HTTP. Docker starts all four services.
 
 #### Project paths (host ↔ container)

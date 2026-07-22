@@ -165,6 +165,39 @@ describe("codex app-server run transport", () => {
     expect(observedEvents).toContain("result:success");
   });
 
+  it("normalizes the removed on-failure approval policy for app-server", async () => {
+    const logger = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    const result = await runCodexAppServer(
+      createRunInput({
+        options: {
+          testScenario: "run-success",
+          approvalPolicy: "on-failure",
+          sandboxMode: "workspace-write",
+        },
+      }),
+      logger,
+    );
+
+    expect(result.outputText).toContain("Hello from fake app-server");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedApprovalPolicy: "on-failure",
+        resolvedApprovalPolicy: "on-request",
+      }),
+      "WARN [runtime:codex] App-server approval policy normalized for current protocol",
+    );
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({ approvalPolicy: "on-request" }),
+      "DEBUG [runtime:codex] Resolved app-server approval and sandbox settings",
+    );
+  });
+
   it("uses thread/resume for resumed turns and keeps the existing thread id", async () => {
     const result = await runCodexAppServer(
       createRunInput(

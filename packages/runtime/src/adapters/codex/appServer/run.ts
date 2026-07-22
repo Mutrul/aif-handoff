@@ -234,6 +234,7 @@ async function runCodexAppServerAttempt(
       },
       capabilities: {
         experimentalApi: experimentalApiEnabled,
+        requestAttestation: false,
       },
     });
 
@@ -740,9 +741,22 @@ function resolveCodexPermissionOverrides(
     rawEffort && CODEX_EFFORT_LEVELS.has(rawEffort as ReasoningEffort)
       ? (rawEffort as ReasoningEffort)
       : null;
+  const approvalPolicy = explicitApproval === "on-failure" ? "on-request" : explicitApproval;
+
+  if (explicitApproval === "on-failure") {
+    logger?.warn?.(
+      {
+        runtimeId: input.runtimeId,
+        transport: "app-server",
+        requestedApprovalPolicy: explicitApproval,
+        resolvedApprovalPolicy: approvalPolicy,
+      },
+      "WARN [runtime:codex] App-server approval policy normalized for current protocol",
+    );
+  }
 
   return {
-    approvalPolicy: explicitApproval ?? (bypass ? "never" : "on-request"),
+    approvalPolicy: approvalPolicy ?? (bypass ? "never" : "on-request"),
     sandboxMode: explicitSandbox ?? (bypass ? "danger-full-access" : "workspace-write"),
     modelReasoningEffort,
   };
@@ -778,11 +792,9 @@ function buildSandboxPolicy(sandboxMode: string, input: RuntimeRunInput): Sandbo
     return { type: "dangerFullAccess" };
   }
 
-  const fullReadAccess = { type: "fullAccess" } as const;
   if (sandboxMode === "read-only") {
     return {
       type: "readOnly",
-      access: fullReadAccess,
       networkAccess: false,
     };
   }
@@ -790,7 +802,6 @@ function buildSandboxPolicy(sandboxMode: string, input: RuntimeRunInput): Sandbo
   return {
     type: "workspaceWrite",
     writableRoots: [input.cwd ?? input.projectRoot ?? process.cwd()],
-    readOnlyAccess: fullReadAccess,
     networkAccess: false,
     excludeTmpdirEnvVar: false,
     excludeSlashTmp: false,
