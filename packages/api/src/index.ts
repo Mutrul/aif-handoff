@@ -21,7 +21,7 @@ const startTime = Date.now();
 const app = new Hono();
 
 // WebSocket must be set up before routes
-const { injectWebSocket } = setupWebSocket(app);
+const { webSocketServer } = setupWebSocket(app);
 
 // Middleware
 app.use(
@@ -112,7 +112,7 @@ const codexIndexService = createCodexIndexService();
 const server = startServer({
   fetch: app.fetch,
   port,
-  injectWebSocket,
+  webSocketServer,
   onStarted() {
     void codexIndexService.start();
   },

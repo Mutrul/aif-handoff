@@ -1,6 +1,7 @@
 import { createAdaptorServer } from "@hono/node-server";
 import type { ServerType } from "@hono/node-server";
 import type pino from "pino";
+import type { WebSocketServer } from "ws";
 
 type StartupLogger = Pick<pino.Logger, "debug" | "error" | "info">;
 type StartupFetch = Parameters<typeof createAdaptorServer>[0]["fetch"];
@@ -9,7 +10,7 @@ interface StartServerOptions {
   fetch: StartupFetch;
   port: number;
   hostname?: string;
-  injectWebSocket?: (server: ServerType) => void;
+  webSocketServer?: WebSocketServer;
   onStarted?: () => void;
   logger: StartupLogger;
 }
@@ -28,11 +29,15 @@ export function startServer({
   fetch,
   port,
   hostname,
-  injectWebSocket,
+  webSocketServer,
   onStarted,
   logger,
 }: StartServerOptions): ServerType {
-  const server = createAdaptorServer({ fetch, hostname });
+  const server = createAdaptorServer({
+    fetch,
+    hostname,
+    ...(webSocketServer ? { websocket: { server: webSocketServer } } : {}),
+  });
   let startupPhase: StartupPhase = "before-ready";
 
   server.on("error", (error: Error) => {
@@ -50,9 +55,8 @@ export function startServer({
     logger.error({ error, hostname, port, startupPhase }, "API server error.");
   });
 
-  if (injectWebSocket) {
-    injectWebSocket(server);
-    logger.debug({ hostname, port }, "WebSocket injected into server");
+  if (webSocketServer) {
+    logger.debug({ hostname, port }, "WebSocket configured for server");
   }
 
   server.listen(port, hostname, () => {

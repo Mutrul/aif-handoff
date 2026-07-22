@@ -1,8 +1,8 @@
 import type { Hono } from "hono";
-import { createNodeWebSocket } from "@hono/node-ws";
+import { upgradeWebSocket } from "@hono/node-server";
 import type { WsEvent } from "@aif/shared";
 import { logger } from "@aif/shared";
-import type { WebSocket } from "ws";
+import { WebSocketServer, type WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 
 const log = logger("ws");
@@ -10,7 +10,6 @@ const log = logger("ws");
 let clients: Set<WebSocket> = new Set();
 const clientMap: Map<string, WebSocket> = new Map();
 const socketToClientId: Map<WebSocket, string> = new Map();
-let injectWebSocketFn: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
 
 function getRawWebSocket(ws: unknown): WebSocket | null {
   if (!ws || typeof ws !== "object") return null;
@@ -20,8 +19,7 @@ function getRawWebSocket(ws: unknown): WebSocket | null {
 }
 
 export function setupWebSocket(app: Hono) {
-  const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
-  injectWebSocketFn = injectWebSocket;
+  const webSocketServer = new WebSocketServer({ noServer: true });
 
   app.get(
     "/ws",
@@ -53,11 +51,7 @@ export function setupWebSocket(app: Hono) {
     })),
   );
 
-  return { injectWebSocket, upgradeWebSocket };
-}
-
-export function getInjectWebSocket() {
-  return injectWebSocketFn;
+  return { webSocketServer, upgradeWebSocket };
 }
 
 export function sendToClient(clientId: string, event: WsEvent): boolean {
