@@ -266,7 +266,7 @@ export function createExampleRuntimeAdapter(
         ...DEFAULT_RUNTIME_CAPABILITIES,
         // Enable what you implement:
         // supportsStreaming: true,
-        // supportsModelDiscovery: true,
+        supportsModelDiscovery: true,
         // supportsCustomEndpoint: true,
         // supportsSessionFork: true, // implement forkSession() when enabled
         //

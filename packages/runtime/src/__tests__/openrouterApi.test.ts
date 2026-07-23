@@ -517,6 +517,11 @@ describe("OpenRouter API transport", () => {
               name: "GPT-4o",
               reasoning: { supported_efforts: [] },
             },
+            {
+              id: "openai/gpt-5",
+              name: "GPT-5",
+              reasoning: { supported_efforts: null },
+            },
           ],
         }),
       );
@@ -526,7 +531,7 @@ describe("OpenRouter API transport", () => {
         options: { apiKey: "sk-test" },
       });
 
-      expect(models).toHaveLength(2);
+      expect(models).toHaveLength(3);
       expect(models[0].id).toBe("anthropic/claude-sonnet-4");
       expect(models[0].label).toBe("Claude Sonnet 4");
       expect(models[0].supportsStreaming).toBe(true);
@@ -538,6 +543,10 @@ describe("OpenRouter API transport", () => {
         defaultEffort: "max",
       });
       expect(models[1].metadata).toMatchObject({ supportsEffort: false });
+      expect(models[2].metadata).toMatchObject({
+        supportsEffort: true,
+        supportedEffortLevels: ["max", "xhigh", "high", "medium", "low", "minimal", "none"],
+      });
     });
 
     it("returns empty array when data is missing", async () => {

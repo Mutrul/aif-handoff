@@ -115,6 +115,34 @@ describe("runtime model effort policy", () => {
     expect(validation.input.options).not.toHaveProperty("effort");
   });
 
+  it.each(["max", "none"])(
+    "accepts OpenRouter gateway effort %s only when model discovery advertises it",
+    (effort) => {
+      const fallbackValidation = validateRuntimeModelEffort(
+        createInput("openrouter", "effort", effort),
+        null,
+      );
+      const discoveredValidation = validateRuntimeModelEffort(
+        createInput("openrouter", "effort", effort),
+        [
+          {
+            id: "model-1",
+            metadata: {
+              supportsEffort: true,
+              supportedEffortLevels: ["max", "xhigh", "high", "medium", "low", "minimal", "none"],
+            },
+          },
+        ],
+      );
+
+      expect(fallbackValidation.reasonCode).toBe("unsupported_model_effort");
+      expect(fallbackValidation.input.options).not.toHaveProperty("effort");
+      expect(discoveredValidation.source).toBe("discovery");
+      expect(discoveredValidation.acceptedEffort).toBe(effort);
+      expect(discoveredValidation.input.options).toHaveProperty("effort", effort);
+    },
+  );
+
   it("normalizes legacy numeric Claude effort before validating model metadata", () => {
     const accepted = validateRuntimeModelEffort(createInput("claude", "effort", 4), null);
     const rejected = validateRuntimeModelEffort(createInput("claude", "effort", 4), [

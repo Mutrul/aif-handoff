@@ -17,6 +17,15 @@ export const OPENROUTER_MODEL_EFFORT_LEVELS = [
   "high",
   "xhigh",
 ] as const;
+export const OPENROUTER_GATEWAY_MODEL_EFFORT_LEVELS = [
+  "max",
+  "xhigh",
+  "high",
+  "medium",
+  "low",
+  "minimal",
+  "none",
+] as const;
 
 const CLAUDE_NUMERIC_MODEL_EFFORT_LEVELS: Record<number, string> = {
   1: "low",

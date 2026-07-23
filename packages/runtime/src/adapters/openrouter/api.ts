@@ -18,6 +18,7 @@ import { withProxyDispatcher } from "../../proxyEnv.js";
 import {
   normalizeModelEffort,
   normalizeModelEffortLevels,
+  OPENROUTER_GATEWAY_MODEL_EFFORT_LEVELS,
   OPENROUTER_MODEL_EFFORT_LEVELS,
   resolveModelEffortOption,
 } from "../../modelEffort.js";
@@ -684,6 +685,7 @@ export async function validateOpenRouterApiConnection(
 
 export async function listOpenRouterApiModels(
   input: RuntimeConnectionValidationInput | RuntimeModelListInput,
+  logger?: OpenRouterApiLogger,
 ): Promise<RuntimeModel[]> {
   const inputWithOptions = input as RuntimeConnectionValidationInput;
   const baseUrl = resolveBaseUrl(inputWithOptions);
@@ -730,6 +732,15 @@ export async function listOpenRouterApiModels(
         metadata.supportsEffort = false;
       } else if (reasoning.supported_efforts === null) {
         metadata.supportsEffort = true;
+        metadata.supportedEffortLevels = [...OPENROUTER_GATEWAY_MODEL_EFFORT_LEVELS];
+        logger?.debug?.(
+          {
+            runtimeId: input.runtimeId,
+            model: model.id,
+            supportedEffortLevels: OPENROUTER_GATEWAY_MODEL_EFFORT_LEVELS,
+          },
+          "[FIX:openrouter-effort] Expanded unrestricted reasoning effort metadata",
+        );
       }
       const defaultEffort = normalizeModelEffort(reasoning.default_effort);
       if (defaultEffort) {

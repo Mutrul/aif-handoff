@@ -82,6 +82,8 @@ Reasoning effort is model metadata, not a runtime-wide enum. The profile form re
 
 The rollout is controlled by `AIF_RUNTIME_MODEL_EFFORT_DISCOVERY_ENABLED=false`. While disabled, the profile form and execution paths keep the stable runtime-specific allowlists. When enabled, adapters normalize and deduplicate provider-advertised values, a model with `supportsEffort: false` hides the control, and execution validates the persisted value against cached metadata for the selected model. If metadata is unavailable, execution retains the runtime-specific fallback allowlist. Stale or unsupported profile values are ignored with a structured warning before any provider request is built.
 
+OpenRouter reports `reasoning.supported_efforts: null` when a model accepts every gateway effort value. In discovery mode this expands to `max`, `xhigh`, `high`, `medium`, `low`, `minimal`, and `none`; the flag-off fallback remains unchanged.
+
 ### Runtime Proxy Support
 
 All built-in runtime adapters understand `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` plus lowercase variants. SDK/CLI/App Server transports receive these variables in their curated child-process environment. API transports use an undici dispatcher directly, so native Node `fetch` does not silently bypass the configured proxy.
