@@ -367,6 +367,8 @@ export interface SubagentQueryOptions {
   includePartialMessages?: boolean;
   /** Optional max turns for runtime adapters that support it. */
   maxTurns?: number;
+  /** Usage accounting source. Coordinator stages default to SUBAGENT. */
+  usageSource?: UsageSource;
 }
 
 export interface SubagentQueryResult {
@@ -1068,7 +1070,7 @@ export async function executeSubagentQuery(
         options: context.options,
         execution: executionIntent,
         usageContext: {
-          source: UsageSource.SUBAGENT,
+          source: options.usageSource ?? UsageSource.SUBAGENT,
           projectId: projectIdForUsage,
           taskId,
         },

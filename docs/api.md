@@ -349,7 +349,11 @@ Returns the current auto-queue state for the project. When enabled, the
 coordinator advances the next backlog task with the smallest `position` into
 planning whenever the project has no active/locked task. Ordinary `POST /tasks`
 creation appends new backlog rows to the tail of that project's backlog, so the
-default create path is FIFO.
+default create path is FIFO. For Git projects, a task does not become terminal
+until its local completion commit is verified. The resulting SHA is exposed as
+`commitSha`; `autoQueueCommitStatus` reports `committed`, `no_changes`,
+`not_applicable`, or a non-terminal/failure state. A failed commit moves the
+task to `blocked_external` and prevents the next queued task from starting.
 
 **Response:** `200 OK`
 
@@ -376,7 +380,9 @@ clients can update their board indicator.
 
 Parallel auto-queue with `git.create_branches=true` requires
 `AIF_TASK_WORKTREES_ENABLED=true`. Queued full-mode tasks then receive isolated
-git worktrees when planning starts.
+git worktrees when planning starts. Git projects without isolated task
+worktrees are processed serially even when project parallel execution is
+enabled, preserving task-scoped commit boundaries.
 
 ### Get Project Warmup State
 

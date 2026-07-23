@@ -446,6 +446,8 @@ AIF_TASK_WORKTREES_ENABLED=true
 - Cron ticks and WebSocket wakes share one single-flight poll loop. A wake received during an active cycle is coalesced into one follow-up cycle, preserving project-local stage order across trigger sources.
 - With `AIF_TASK_WORKTREES_ENABLED=false` (default), any branch-isolated project (`git.create_branches=true`) remains serial. The API also rejects parallel auto-queue for that combination.
 - With `AIF_TASK_WORKTREES_ENABLED=true`, full-mode planning for parallel branch-isolated projects creates a sibling git worktree for each task, persists its absolute path in `tasks.worktree_path`, and runs all downstream stages from that path. Legacy branch-bound tasks that have `branchName` but no `worktreePath` still force serial execution until they drain.
+- Auto-queue completion commits are synchronous. A Git task remains in flight until its commit is verified and its SHA is stored; commit failure moves it to `blocked_external` and prevents queue advancement.
+- Any Git-backed auto-queue project that shares one working directory is forced to serial execution. Parallel task-scoped commits require isolated task worktrees.
 - Tasks within a stage run concurrently via `Promise.allSettled` — a failure in one task does not block others
 - Tasks are atomically claimed via `lockedBy` / `lockedUntil` columns to prevent duplicate picks
 - Lock duration is tied to the stage timeout (`AGENT_STAGE_RUN_TIMEOUT_MS` + 5 min buffer). Heartbeats renew the lock periodically, so long-running stages keep their claim alive
