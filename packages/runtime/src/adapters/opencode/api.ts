@@ -14,7 +14,11 @@ import type {
 import { getEnv, redactProviderText } from "@aif/shared";
 import { Agent, type Dispatcher } from "undici";
 import { resolveProxyDispatcher } from "../../proxyEnv.js";
-import { normalizeModelEffort, normalizeModelEffortLevels } from "../../modelEffort.js";
+import {
+  normalizeModelEffortLevels,
+  OPENCODE_MODEL_EFFORT_LEVELS,
+  resolveModelEffortOption,
+} from "../../modelEffort.js";
 import { classifyOpenCodeRuntimeError, OpenCodeRuntimeAdapterError } from "./errors.js";
 
 export interface OpenCodeApiLogger {
@@ -428,7 +432,7 @@ export async function runOpenCodeApi(
   }
 
   const options = asRecord(input.options);
-  const effort = normalizeModelEffort(options.reasoningEffort);
+  const effort = resolveModelEffortOption(options, "reasoningEffort", OPENCODE_MODEL_EFFORT_LEVELS);
   if (effort) {
     body.reasoningEffort = effort;
   }

@@ -1,5 +1,5 @@
 import type { RuntimeRunInput, RuntimeRunResult, RuntimeSessionForkInput } from "../../../types.js";
-import { normalizeModelEffort } from "../../../modelEffort.js";
+import { CODEX_MODEL_EFFORT_LEVELS, resolveModelEffortOption } from "../../../modelEffort.js";
 import {
   isRetriableTimeoutError,
   makeProcessRunTimeoutError,
@@ -735,9 +735,11 @@ function resolveCodexPermissionOverrides(
     normalizedValue: explicitSandbox,
   });
 
-  const modelReasoningEffort = normalizeModelEffort(
-    options.modelReasoningEffort,
-  ) as ReasoningEffort | null;
+  const modelReasoningEffort = resolveModelEffortOption(
+    options,
+    "modelReasoningEffort",
+    CODEX_MODEL_EFFORT_LEVELS,
+  );
   const approvalPolicy = explicitApproval === "on-failure" ? "on-request" : explicitApproval;
 
   if (explicitApproval === "on-failure") {

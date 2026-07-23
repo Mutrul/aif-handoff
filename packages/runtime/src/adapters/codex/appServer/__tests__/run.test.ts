@@ -2,6 +2,7 @@ import { once } from "node:events";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { validateRuntimeModelEffort } from "../../../../modelEffort.js";
 import {
   RuntimeTransport,
   UsageSource,
@@ -198,7 +199,7 @@ describe("codex app-server run transport", () => {
     );
   });
 
-  it("passes provider-advertised reasoning effort without a static allowlist", async () => {
+  it("passes a supported reasoning effort to the generated protocol", async () => {
     const logger = {
       info: vi.fn(),
       debug: vi.fn(),
@@ -212,7 +213,7 @@ describe("codex app-server run transport", () => {
           testScenario: "run-success",
           approvalPolicy: "on-request",
           sandboxMode: "workspace-write",
-          modelReasoningEffort: " Ultra ",
+          modelReasoningEffort: " XHIGH ",
         },
       }),
       logger,
@@ -221,6 +222,68 @@ describe("codex app-server run transport", () => {
     expect(result.outputText).toContain("Hello from fake app-server");
     expect(logger.debug).toHaveBeenCalledWith(
       expect.objectContaining({ hasReasoningEffort: true }),
+      "DEBUG [runtime:codex] Resolved app-server approval and sandbox settings",
+    );
+  });
+
+  it("passes a selected-model dynamic reasoning effort after validation", async () => {
+    const logger = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const validation = validateRuntimeModelEffort(
+      createRunInput({
+        model: "gpt-current",
+        options: {
+          testScenario: "run-success",
+          approvalPolicy: "on-request",
+          sandboxMode: "workspace-write",
+          modelReasoningEffort: " Ultra ",
+        },
+      }),
+      [
+        {
+          id: "gpt-current",
+          metadata: {
+            supportsEffort: true,
+            supportedEffortLevels: ["ultra"],
+          },
+        },
+      ],
+    );
+
+    await runCodexAppServer(validation.input, logger);
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({ hasReasoningEffort: true }),
+      "DEBUG [runtime:codex] Resolved app-server approval and sandbox settings",
+    );
+  });
+
+  it("does not cast an arbitrary reasoning effort into the generated protocol", async () => {
+    const logger = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+
+    await runCodexAppServer(
+      createRunInput({
+        options: {
+          testScenario: "run-success",
+          approvalPolicy: "on-request",
+          sandboxMode: "workspace-write",
+          modelReasoningEffort: "bogus",
+        },
+      }),
+      logger,
+    );
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({ hasReasoningEffort: false }),
       "DEBUG [runtime:codex] Resolved app-server approval and sandbox settings",
     );
   });

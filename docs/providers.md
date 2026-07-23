@@ -80,7 +80,7 @@ Reasoning effort is model metadata, not a runtime-wide enum. The profile form re
 | OpenCode   | Provider model `variants[*].reasoningEffort` | `reasoningEffort`      |
 | OpenRouter | `/models` `reasoning.supported_efforts`      | `effort`               |
 
-The adapter normalizes and deduplicates provider-advertised values without applying a fixed allowlist. A model with `supportsEffort: false` hides the control. If discovery cannot provide model-level effort metadata, the form uses the runtime-specific fallback list. Changing the selected model immediately recomputes the available values and clears a previously selected value that the new model does not support.
+The rollout is controlled by `AIF_RUNTIME_MODEL_EFFORT_DISCOVERY_ENABLED=false`. While disabled, the profile form and execution paths keep the stable runtime-specific allowlists. When enabled, adapters normalize and deduplicate provider-advertised values, a model with `supportsEffort: false` hides the control, and execution validates the persisted value against cached metadata for the selected model. If metadata is unavailable, execution retains the runtime-specific fallback allowlist. Stale or unsupported profile values are ignored with a structured warning before any provider request is built.
 
 ### Runtime Proxy Support
 

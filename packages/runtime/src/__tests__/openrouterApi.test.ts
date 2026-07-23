@@ -6,6 +6,8 @@ import {
   validateOpenRouterApiConnection,
 } from "../adapters/openrouter/api.js";
 import { OpenRouterRuntimeAdapterError } from "../adapters/openrouter/errors.js";
+import { validateRuntimeModelEffort } from "../modelEffort.js";
+import type { RuntimeRunInput } from "../types.js";
 import { TEST_USAGE_CONTEXT } from "./helpers/usageContext.js";
 
 function clearProxyEnv() {
@@ -113,13 +115,36 @@ describe("OpenRouter API transport", () => {
 
     it("passes provider-advertised reasoning effort without a static allowlist", async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: "ok" } }] }));
+      const validation = validateRuntimeModelEffort(
+        createRunInput({ options: { apiKey: "sk-test", effort: " Max " } }) as RuntimeRunInput,
+        [
+          {
+            id: "anthropic/claude-sonnet-4",
+            metadata: {
+              supportsEffort: true,
+              supportedEffortLevels: ["max"],
+            },
+          },
+        ],
+      );
 
-      await runOpenRouterApi(createRunInput({ options: { apiKey: "sk-test", effort: " Max " } }));
+      await runOpenRouterApi(validation.input);
 
       const body = JSON.parse(
         String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body),
       ) as { reasoning?: { effort?: string } };
       expect(body.reasoning).toEqual({ effort: "max" });
+    });
+
+    it("does not send an unvalidated reasoning effort", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: "ok" } }] }));
+
+      await runOpenRouterApi(createRunInput({ options: { apiKey: "sk-test", effort: "bogus" } }));
+
+      const body = JSON.parse(
+        String((fetchMock.mock.calls[0] as [string, RequestInit])[1].body),
+      ) as { reasoning?: { effort?: string } };
+      expect(body.reasoning).toBeUndefined();
     });
 
     it("includes system prompt when provided", async () => {

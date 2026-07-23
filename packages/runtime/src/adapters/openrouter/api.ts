@@ -15,7 +15,12 @@ import { RuntimeExecutionError, type RuntimeExecutionErrorMetadata } from "../..
 import { buildRuntimeLimitEvent } from "../../limitEvents.js";
 import { buildOpenAiCompatibleLimitSnapshot } from "../../openaiRateLimits.js";
 import { withProxyDispatcher } from "../../proxyEnv.js";
-import { normalizeModelEffort, normalizeModelEffortLevels } from "../../modelEffort.js";
+import {
+  normalizeModelEffort,
+  normalizeModelEffortLevels,
+  OPENROUTER_MODEL_EFFORT_LEVELS,
+  resolveModelEffortOption,
+} from "../../modelEffort.js";
 import { isRetriableTimeoutError, resolveRetryDelay, sleepMs } from "../../timeouts.js";
 import { classifyOpenRouterRuntimeError } from "./errors.js";
 
@@ -170,7 +175,7 @@ function buildRequestBody(input: RuntimeRunInput, stream: boolean): Record<strin
   }
 
   const options = asRecord(input.options);
-  const effort = normalizeModelEffort(options.effort);
+  const effort = resolveModelEffortOption(options, "effort", OPENROUTER_MODEL_EFFORT_LEVELS);
   if (effort) {
     body.reasoning = { effort };
   }

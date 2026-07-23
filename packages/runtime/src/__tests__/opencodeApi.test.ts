@@ -8,6 +8,8 @@ import {
   validateOpenCodeApiConnection,
 } from "../adapters/opencode/api.js";
 import { OpenCodeRuntimeAdapterError } from "../adapters/opencode/errors.js";
+import { validateRuntimeModelEffort } from "../modelEffort.js";
+import type { RuntimeRunInput } from "../types.js";
 import { resetEnvCache } from "@aif/shared";
 import { TEST_USAGE_CONTEXT } from "./helpers/usageContext.js";
 
@@ -126,12 +128,47 @@ describe("OpenCode API transport", () => {
         }),
       );
 
-    await runOpenCodeApi(createRunInput({ options: { reasoningEffort: " Max " } }));
+    const validation = validateRuntimeModelEffort(
+      createRunInput({ options: { reasoningEffort: " Max " } }) as RuntimeRunInput,
+      [
+        {
+          id: "anthropic/claude-sonnet-4",
+          metadata: {
+            supportsEffort: true,
+            supportedEffortLevels: ["max"],
+          },
+        },
+      ],
+    );
+    await runOpenCodeApi(validation.input);
 
     const postBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)) as {
       reasoningEffort?: string;
     };
     expect(postBody.reasoningEffort).toBe("max");
+  });
+
+  it("does not pass a stale reasoning effort in the session message", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: "session-effort",
+          time: { created: 1710000000, updated: 1710000001 },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          info: { id: "message-effort", role: "assistant", time: 1710000002 },
+          parts: [{ type: "text", text: "ok" }],
+        }),
+      );
+
+    await runOpenCodeApi(createRunInput({ options: { reasoningEffort: "bogus" } }));
+
+    const postBody = JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body)) as {
+      reasoningEffort?: string;
+    };
+    expect(postBody.reasoningEffort).toBeUndefined();
   });
 
   it("uses long-running dispatcher for session messages when feature flag is enabled", async () => {

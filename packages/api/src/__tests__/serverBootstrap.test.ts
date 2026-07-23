@@ -68,6 +68,33 @@ describe("startServer", () => {
     expect(onStarted).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the legacy WebSocket bridge reachable without adapter WebSocket options", async () => {
+    const server = new FakeServer();
+    const logger = createLogger();
+    const injectWebSocket = vi.fn();
+
+    createAdaptorServerMock.mockReturnValue(server);
+
+    const { startServer } = await import("../serverBootstrap.js");
+
+    startServer({
+      fetch: vi.fn(),
+      port: 3009,
+      injectWebSocket,
+      logger,
+    });
+
+    expect(createAdaptorServerMock).toHaveBeenCalledWith({
+      fetch: expect.any(Function),
+      hostname: undefined,
+    });
+    expect(injectWebSocket).toHaveBeenCalledWith(server);
+    expect(logger.debug).toHaveBeenCalledWith(
+      { hostname: undefined, port: 3009 },
+      "WebSocket configured for server",
+    );
+  });
+
   it("logs an actionable error message when the port is already in use", async () => {
     const server = new FakeServer();
     const logger = createLogger();

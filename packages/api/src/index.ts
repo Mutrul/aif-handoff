@@ -17,11 +17,12 @@ import { createGracefulShutdownHandler } from "./shutdown.js";
 
 const log = logger("server");
 const startTime = Date.now();
+const nodeServerV2WebSocketEnabled = getEnv().AIF_API_NODE_SERVER_V2_WEBSOCKET_ENABLED;
 
 const app = new Hono();
 
 // WebSocket must be set up before routes
-const { webSocketServer } = setupWebSocket(app);
+const { injectWebSocket, webSocketServer } = setupWebSocket(app, nodeServerV2WebSocketEnabled);
 
 // Middleware
 app.use(
@@ -113,6 +114,7 @@ const server = startServer({
   fetch: app.fetch,
   port,
   webSocketServer,
+  injectWebSocket,
   onStarted() {
     void codexIndexService.start();
   },

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { validateRuntimeModelEffort } from "../modelEffort.js";
+import type { RuntimeRunInput } from "../types.js";
 import { TEST_USAGE_CONTEXT } from "./helpers/usageContext.js";
 
 const queryMock = vi.fn();
@@ -912,16 +914,25 @@ describe("Claude runtime adapter", () => {
   it("forwards provider-advertised effort to Claude query options", async () => {
     queryMock.mockImplementation(immediateSuccess("effort-ok"));
     const adapter = createClaudeRuntimeAdapter();
-
-    const result = await adapter.run(
+    const validation = validateRuntimeModelEffort(
       createRunInput({
         model: "sonnet",
         options: {
           apiKeyEnvVar: "ANTHROPIC_API_KEY",
           effort: " Ultra ",
         },
-      }),
+      }) as RuntimeRunInput,
+      [
+        {
+          id: "sonnet",
+          metadata: {
+            supportsEffort: true,
+            supportedEffortLevels: ["ultra"],
+          },
+        },
+      ],
     );
+    const result = await adapter.run(validation.input);
 
     expect(result.outputText).toBe("effort-ok");
     expect(queryMock).toHaveBeenCalledTimes(1);

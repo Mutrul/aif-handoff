@@ -9,7 +9,7 @@ import type {
 import { isValidTrustToken } from "../../trust.js";
 import { buildClaudeHooks } from "./hooks.js";
 import { PROXY_ENV_VARS } from "../../proxyEnv.js";
-import { normalizeModelEffort } from "../../modelEffort.js";
+import { CLAUDE_MODEL_EFFORT_LEVELS, resolveModelEffortOption } from "../../modelEffort.js";
 
 export interface ClaudeRuntimeExecutionOptions {
   maxBudgetUsd?: number | null;
@@ -290,7 +290,7 @@ function mergeSystemPromptAppend(
   return values.join("\n\n");
 }
 
-export const CLAUDE_EFFORT_LEVELS = ["low", "medium", "high", "max"] as const;
+export const CLAUDE_EFFORT_LEVELS = CLAUDE_MODEL_EFFORT_LEVELS;
 export type ClaudeEffortLevel = (typeof CLAUDE_EFFORT_LEVELS)[number];
 const CLAUDE_NUMERIC_EFFORT_MAP: Record<number, ClaudeEffortLevel> = {
   1: "low",
@@ -299,9 +299,16 @@ const CLAUDE_NUMERIC_EFFORT_MAP: Record<number, ClaudeEffortLevel> = {
   4: "max",
 };
 
-export function normalizeClaudeEffort(rawEffort: unknown): string | null {
+export function normalizeClaudeEffort(
+  rawEffort: unknown,
+  options?: Record<string, unknown>,
+): string | null {
   if (typeof rawEffort === "string") {
-    return normalizeModelEffort(rawEffort);
+    return resolveModelEffortOption(
+      options ?? { effort: rawEffort },
+      "effort",
+      CLAUDE_EFFORT_LEVELS,
+    );
   }
   if (typeof rawEffort === "number" && Number.isFinite(rawEffort)) {
     return CLAUDE_NUMERIC_EFFORT_MAP[Math.floor(rawEffort)] ?? null;
@@ -347,7 +354,7 @@ export function buildClaudeQueryOptions(
     );
   }
   const rawEffort = optionRecord?.effort;
-  const normalizedEffort = normalizeClaudeEffort(rawEffort);
+  const normalizedEffort = normalizeClaudeEffort(rawEffort, optionRecord ?? undefined);
   const forkSourceSessionId = readForkSourceSessionId(input);
   logger?.debug?.(
     {

@@ -11,6 +11,7 @@ interface StartServerOptions {
   port: number;
   hostname?: string;
   webSocketServer?: WebSocketServer;
+  injectWebSocket?: (server: ServerType) => void;
   onStarted?: () => void;
   logger: StartupLogger;
 }
@@ -30,6 +31,7 @@ export function startServer({
   port,
   hostname,
   webSocketServer,
+  injectWebSocket,
   onStarted,
   logger,
 }: StartServerOptions): ServerType {
@@ -38,6 +40,7 @@ export function startServer({
     hostname,
     ...(webSocketServer ? { websocket: { server: webSocketServer } } : {}),
   });
+  injectWebSocket?.(server);
   let startupPhase: StartupPhase = "before-ready";
 
   server.on("error", (error: Error) => {
@@ -55,7 +58,7 @@ export function startServer({
     logger.error({ error, hostname, port, startupPhase }, "API server error.");
   });
 
-  if (webSocketServer) {
+  if (webSocketServer || injectWebSocket) {
     logger.debug({ hostname, port }, "WebSocket configured for server");
   }
 

@@ -19,7 +19,7 @@ import {
   type CodexSandboxMode,
 } from "./permissions.js";
 import { PROXY_ENV_VARS } from "../../proxyEnv.js";
-import { normalizeModelEffort } from "../../modelEffort.js";
+import { CODEX_MODEL_EFFORT_LEVELS, resolveModelEffortOption } from "../../modelEffort.js";
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -169,7 +169,11 @@ function normalizeCliArgs(
   if (input.model) {
     args.push("--model", input.model);
   }
-  const effort = normalizeModelEffort(options.modelReasoningEffort);
+  const effort = resolveModelEffortOption(
+    options,
+    "modelReasoningEffort",
+    CODEX_MODEL_EFFORT_LEVELS,
+  );
   if (effort) {
     args.push("-c", `model_reasoning_effort=${JSON.stringify(effort)}`);
   }

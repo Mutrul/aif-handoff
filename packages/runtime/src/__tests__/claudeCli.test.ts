@@ -395,8 +395,8 @@ describe("runClaudeCli", () => {
     expect(cliArgs).toContain("claude-opus-4-1");
   });
 
-  it("includes --effort for a provider-advertised level", async () => {
-    const input = createInput({ options: { effort: " Ultra " } });
+  it("includes --effort for a fallback level", async () => {
+    const input = createInput({ options: { effort: " High " } });
     const promise = runClaudeCli(input);
 
     simulateStreamAndClose(0, successfulStream({ sessionId: "sess-effort", text: "Done" }));
@@ -405,7 +405,7 @@ describe("runClaudeCli", () => {
 
     const { cliArgs } = getSpawnInvocation();
     expect(cliArgs).toContain("--effort");
-    expect(cliArgs[cliArgs.indexOf("--effort") + 1]).toBe("ultra");
+    expect(cliArgs[cliArgs.indexOf("--effort") + 1]).toBe("high");
   });
 
   it("normalizes numeric effort values to named levels on the CLI", async () => {
@@ -422,7 +422,7 @@ describe("runClaudeCli", () => {
   });
 
   it("omits --effort when options.effort is not provided or invalid", async () => {
-    const input = createInput({ options: { effort: "   " } });
+    const input = createInput({ options: { effort: "bogus" } });
     const promise = runClaudeCli(input);
 
     simulateStreamAndClose(0, successfulStream({ sessionId: "sess-no-effort", text: "Done" }));
