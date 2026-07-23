@@ -233,6 +233,7 @@
 import {
   DEFAULT_RUNTIME_CAPABILITIES,
   type RuntimeAdapter,
+  type RuntimeModel,
   type RuntimeRunInput,
   type RuntimeRunResult,
 } from "../types.js";
@@ -304,6 +305,24 @@ export function createExampleRuntimeAdapter(
       throw new Error(`${runtimeId} adapter: run() not implemented`);
     },
 
+    async listModels(): Promise<RuntimeModel[]> {
+      return [
+        {
+          id: "reasoning-model",
+          metadata: {
+            supportsEffort: true,
+            supportedEffortLevels: ["low", "medium", "high"],
+          },
+        },
+        {
+          id: "non-reasoning-model",
+          metadata: {
+            supportsEffort: false,
+          },
+        },
+      ];
+    },
+
     // Uncomment and implement as you enable capabilities:
     //
     // getEffectiveCapabilities(transport) {
@@ -316,7 +335,6 @@ export function createExampleRuntimeAdapter(
     // async getSession(input) { ... },
     // async listSessionEvents(input) { ... },
     // async validateConnection(input) { ... },
-    // async listModels(input) { ... },
     // async diagnoseError(input) { ... },
     // sanitizeInput(text) { return text.trim(); },
   };

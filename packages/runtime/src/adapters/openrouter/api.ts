@@ -15,6 +15,12 @@ import { RuntimeExecutionError, type RuntimeExecutionErrorMetadata } from "../..
 import { buildRuntimeLimitEvent } from "../../limitEvents.js";
 import { buildOpenAiCompatibleLimitSnapshot } from "../../openaiRateLimits.js";
 import { withProxyDispatcher } from "../../proxyEnv.js";
+import {
+  normalizeModelEffort,
+  normalizeModelEffortLevels,
+  OPENROUTER_MODEL_EFFORT_LEVELS,
+  resolveModelEffortOption,
+} from "../../modelEffort.js";
 import { isRetriableTimeoutError, resolveRetryDelay, sleepMs } from "../../timeouts.js";
 import { classifyOpenRouterRuntimeError } from "./errors.js";
 
@@ -150,20 +156,6 @@ function buildMessages(input: RuntimeRunInput): ChatMessage[] {
   return messages;
 }
 
-const OPENROUTER_EFFORT_LEVELS = new Set(["minimal", "low", "medium", "high", "xhigh"] as const);
-
-type OpenRouterEffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh";
-
-function normalizeOpenRouterEffort(value: unknown): OpenRouterEffortLevel | null {
-  if (typeof value === "string") {
-    const trimmed = value.trim().toLowerCase();
-    if (OPENROUTER_EFFORT_LEVELS.has(trimmed as OpenRouterEffortLevel)) {
-      return trimmed as OpenRouterEffortLevel;
-    }
-  }
-  return null;
-}
-
 function buildRequestBody(input: RuntimeRunInput, stream: boolean): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: input.model,
@@ -183,7 +175,7 @@ function buildRequestBody(input: RuntimeRunInput, stream: boolean): Record<strin
   }
 
   const options = asRecord(input.options);
-  const effort = normalizeOpenRouterEffort(options.effort);
+  const effort = resolveModelEffortOption(options, "effort", OPENROUTER_MODEL_EFFORT_LEVELS);
   if (effort) {
     body.reasoning = { effort };
   }
@@ -720,18 +712,38 @@ export async function listOpenRouterApiModels(
         name?: string;
         context_length?: number;
         pricing?: { prompt?: string; completion?: string };
+        reasoning?: unknown;
       }>;
     };
     const models = payload.data ?? [];
-    return models.map((model) => ({
-      id: model.id,
-      label: model.name ?? model.id,
-      supportsStreaming: true,
-      metadata: {
+    return models.map((model) => {
+      const metadata: Record<string, unknown> = {
         contextLength: model.context_length,
         pricing: model.pricing,
-      },
-    }));
+      };
+      const reasoning = asRecord(model.reasoning);
+      const supportedEffortLevels = normalizeModelEffortLevels(reasoning.supported_efforts);
+      if (supportedEffortLevels) {
+        metadata.supportsEffort = true;
+        metadata.supportedEffortLevels = supportedEffortLevels;
+      } else if (Array.isArray(reasoning.supported_efforts)) {
+        metadata.supportsEffort = false;
+      } else if (reasoning.supported_efforts === null) {
+        metadata.supportsEffort = true;
+      }
+      const defaultEffort = normalizeModelEffort(reasoning.default_effort);
+      if (defaultEffort) {
+        metadata.supportsEffort = true;
+        metadata.defaultEffort = defaultEffort;
+      }
+
+      return {
+        id: model.id,
+        label: model.name ?? model.id,
+        supportsStreaming: true,
+        metadata,
+      };
+    });
   } catch (error) {
     throw classifyOpenRouterRuntimeError(error);
   }
