@@ -310,7 +310,7 @@ describe("executeSubagentQuery attribution", () => {
     vi.unstubAllGlobals();
   });
 
-  it("passes empty attribution to suppress Co-Authored-By trailers", async () => {
+  it("normalizes empty attribution to {} to suppress Co-Authored-By trailers", async () => {
     queryMock.mockImplementation(async function* () {
       yield {
         type: "result",
@@ -330,9 +330,11 @@ describe("executeSubagentQuery attribution", () => {
     });
 
     const callOptions = queryMock.mock.calls[0][0].options;
-    expect(callOptions.settings).toEqual(
-      expect.objectContaining({ attribution: { commit: "", pr: "" } }),
-    );
+    // The agent requests suppression with empty attribution strings, but the
+    // Claude adapter normalizes them to {} before reaching the SDK: Claude Code
+    // (>= 2.1.x) exits with code 1 on empty `commit`/`pr`, while {} suppresses
+    // trailers cleanly. See normalizeClaudeSettings() in the runtime package.
+    expect(callOptions.settings).toEqual({});
   });
 
   it("passes Handoff branch contract in runtime environment", async () => {
