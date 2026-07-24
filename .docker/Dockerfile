@@ -21,6 +21,10 @@ ENV HTTP_PROXY=${HTTP_PROXY} \
 COPY .docker/apt-install.sh /usr/local/bin/apt-install
 RUN chmod +x /usr/local/bin/apt-install
 
+FROM base AS codex
+ARG CODEX_VERSION=0.145.0
+RUN npm install --prefix /opt/codex --ignore-scripts --no-save --package-lock=false "@openai/codex-sdk@${CODEX_VERSION}"
+
 # ---- Dependencies ----
 FROM base AS deps
 COPY package.json package-lock.json turbo.json ./
@@ -42,19 +46,26 @@ RUN apt-install python3 build-essential ca-certificates
 RUN npm config set fetch-retries 5 \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000 \
-    && npm ci --ignore-scripts \
-    && npm rebuild
+    && npm ci --ignore-scripts
+RUN rm -rf /app/node_modules/@openai /app/node_modules/.bin/codex
+COPY --from=codex /opt/codex/node_modules/@openai ./node_modules/@openai
+COPY --from=codex /opt/codex/node_modules/.bin/codex ./node_modules/.bin/codex
+RUN npm rebuild
 
 # ---- Build ----
 FROM deps AS build
 COPY . .
+RUN npm run codex:app-server:protocol:generate --workspace=@aif/runtime
 RUN npx turbo build
 
 # ---- API ----
 FROM base AS api
-ENV NODE_ENV=production HOME=/home/node
+ENV NODE_ENV=production \
+    HOME=/home/node \
+    CODEX_CLI_PATH=/app/node_modules/.bin/codex \
+    PATH=/app/node_modules/.bin:${PATH}
 RUN apt-install ca-certificates gosu git \
-    && npm i -g @anthropic-ai/claude-code @openai/codex
+    && npm i -g @anthropic-ai/claude-code
 COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/packages/shared ./packages/shared
 COPY --chown=node:node --from=build /app/packages/data ./packages/data
@@ -90,9 +101,12 @@ EXPOSE 80 443
 
 # ---- Agent ----
 FROM base AS agent
-ENV NODE_ENV=production HOME=/home/node
+ENV NODE_ENV=production \
+    HOME=/home/node \
+    CODEX_CLI_PATH=/app/node_modules/.bin/codex \
+    PATH=/app/node_modules/.bin:${PATH}
 RUN apt-install ca-certificates gosu git curl \
-    && npm i -g @anthropic-ai/claude-code @openai/codex
+    && npm i -g @anthropic-ai/claude-code
 COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/packages/shared ./packages/shared
 COPY --chown=node:node --from=build /app/packages/data ./packages/data
@@ -107,7 +121,10 @@ CMD ["npx", "tsx", "packages/agent/src/index.ts"]
 
 # ---- MCP ----
 FROM base AS mcp
-ENV NODE_ENV=production HOME=/home/node
+ENV NODE_ENV=production \
+    HOME=/home/node \
+    CODEX_CLI_PATH=/app/node_modules/.bin/codex \
+    PATH=/app/node_modules/.bin:${PATH}
 RUN apt-install ca-certificates gosu
 COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/packages/shared ./packages/shared
