@@ -120,7 +120,15 @@ COPY --chown=node:node --from=build /app/packages/runtime ./packages/runtime
 COPY --chown=node:node --from=build /app/packages/agent ./packages/agent
 COPY --chown=node:node package.json .
 COPY --chown=node:node .docker/docker-entrypoint.sh /usr/local/bin/
-RUN install -d -o node -g node /app /data /home/www
+# /home/node/.npm is created ROOT-owned by the `npm i -g` above (that RUN executes as root
+# while HOME=/home/node). The agent process runs as `node` (uid 1000), so every later npx
+# invocation fails with EACCES on /home/node/.npm/_cacache/tmp — which is how a consumer's
+# commit-time gates break: `npx markdownlint-cli2` cannot spawn, pre-commit still reports
+# "markdownlint violations", and the rejection reason is npm cache permissions rather than
+# any real lint finding. Observed live 2026-07-23 by a parity audit run inside this image;
+# the agent had to work around it per-commit with npm_config_cache=/tmp/npmcache.
+RUN install -d -o node -g node /app /data /home/www \
+    && chown -R node:node /home/node/.npm
 EXPOSE 3010
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["npx", "tsx", "packages/agent/src/index.ts"]
