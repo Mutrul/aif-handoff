@@ -70,6 +70,7 @@ function makeEnv(overrides: Record<string, unknown> = {}) {
     AGENT_USE_SUBAGENTS: true,
     AGENT_FIRST_ACTIVITY_TIMEOUT_MS: 60_000,
     AIF_USAGE_LIMITS_ENABLED: false,
+    AIF_AGENT_AUTO_QUEUE_COMMIT_GATE_ENABLED: false,
     AIF_STAGE_RUNTIME_PIN_ENABLED: false,
     AIF_WARMUP_ENABLED: false,
     AIF_QA_PIPELINE_ENABLED: false,
