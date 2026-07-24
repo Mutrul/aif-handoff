@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { projects, tasks } from "@aif/shared";
 import { createTestDb } from "@aif/shared/server";
 import { UsageSource } from "@aif/runtime";
+import { createGitTestRoot } from "./gitTestUtils.js";
 
 const testDb = { current: createTestDb() };
 const executeSubagentQueryMock = vi.fn();
@@ -26,28 +26,7 @@ const { ensureAutoQueueTaskCommit } = await import("../autoQueueCommit.js");
 const { findTaskById } = await import("@aif/data");
 
 function createGitProject(): { rootPath: string; initialSha: string } {
-  const rootPath = mkdtempSync(join(tmpdir(), "auto-queue-commit-"));
-  execFileSync("git", ["init", "--initial-branch=main"], { cwd: rootPath, stdio: "ignore" });
-  execFileSync("git", ["config", "user.email", "t@t.local"], {
-    cwd: rootPath,
-    stdio: "ignore",
-  });
-  execFileSync("git", ["config", "user.name", "T"], { cwd: rootPath, stdio: "ignore" });
-  execFileSync("git", ["config", "commit.gpgsign", "false"], {
-    cwd: rootPath,
-    stdio: "ignore",
-  });
-  writeFileSync(join(rootPath, "README.md"), "# test\n");
-  execFileSync("git", ["add", "README.md"], { cwd: rootPath, stdio: "ignore" });
-  execFileSync("git", ["commit", "-m", "init", "--no-verify"], {
-    cwd: rootPath,
-    stdio: "ignore",
-  });
-  const initialSha = execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: rootPath,
-    encoding: "utf8",
-  }).trim();
-  return { rootPath, initialSha };
+  return createGitTestRoot("auto-queue-commit-");
 }
 
 function seedAutoQueueTask(rootPath: string, initialSha: string): void {

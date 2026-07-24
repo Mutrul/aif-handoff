@@ -273,9 +273,11 @@ which makes ordinary backlog creation FIFO instead of LIFO.
   absolute path in `tasks.worktree_path`, and downstream stages run from that
   path. Legacy branch-bound tasks without `worktreePath` still force serial
   execution until they leave the pipeline.
-  Git projects that do not provide isolated task worktrees are also forced to
-  pool depth `1`, even when `parallelEnabled=true`, because task-scoped commits
-  cannot safely share one working directory.
+  When `AIF_AGENT_AUTO_QUEUE_COMMIT_GATE_ENABLED=true`, Git-backed auto-queue
+  projects that do not provide isolated task worktrees are also forced to pool
+  depth `1`, even when `parallelEnabled=true`, because task-scoped commits
+  cannot safely share one working directory. Non-auto-queue projects retain
+  their existing concurrency behavior.
 
 The advance step:
 
@@ -292,8 +294,9 @@ The advance step:
 4. The fill loop runs in a single tick so a parallel project can start its
    full pool without waiting for additional poll cycles.
 
-Before an auto-queued task is published as `done`, the coordinator runs a
-synchronous commit gate in that task's project root or isolated worktree:
+When `AIF_AGENT_AUTO_QUEUE_COMMIT_GATE_ENABLED=true`, the coordinator runs a
+synchronous commit gate in an auto-queued task's project root or isolated
+worktree before publishing the task as `done`:
 
 1. The backlog claim atomically stores the task's starting Git `HEAD` and marks
    its commit state `pending`.
@@ -311,18 +314,24 @@ synchronous commit gate in that task's project root or isolated worktree:
    reconciled without creating a duplicate commit. Terminal tasks with an
    unresolved commit state defensively pause project advancement.
 
+The flag defaults to `false`. In that state, terminal transitions and project
+concurrency follow the legacy path and no auto-queue commit state is prepared.
+
 Task worktrees are retained after `done` / `verified` so operators can inspect
 follow-up changes. Handoff records the path but does not automatically remove
 the sibling worktree directory.
 
 Auto-queue and scheduled execution compose in the same poll cycle:
-`processDueScheduledTasks()` runs first and fires every backlog task whose
-`scheduledAt` is due, then `processAutoQueueAdvance()` runs and **tops up the
-remaining pool slots**. Order matters because once the scheduler advances a
-task, it counts as in-flight and reduces how many slots auto-queue still
-needs to fill. Both passes use the same atomic `claimBacklogTaskForAdvance`
-write so a row is moved out of `backlog` exactly once even when both passes
-target the same task in the same cycle.
+`processDueScheduledTasks()` runs first and fires every eligible backlog task
+whose `scheduledAt` is due, then `processAutoQueueAdvance()` runs and **tops up
+the remaining pool slots**. With the completion-commit flag enabled, a due
+auto-queue task remains scheduled/backlogged while its Git worktree is dirty,
+preventing unrelated pre-existing changes from entering the task's commit.
+Order matters because once the scheduler advances a task, it counts as
+in-flight and reduces how many slots auto-queue still needs to fill. Both
+passes use the same atomic `claimBacklogTaskForAdvance` write so a row is moved
+out of `backlog` exactly once even when both passes target the same task in the
+same cycle.
 
 ## Roadmap Import
 

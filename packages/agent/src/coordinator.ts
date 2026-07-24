@@ -22,6 +22,7 @@ import {
   persistTaskRuntimeLimitSnapshot,
   resolveEffectiveRuntimeProfile,
   type CoordinatorStage,
+  type ProjectRow,
   type TaskFieldsPatch,
   type TaskRow,
 } from "@aif/data";
@@ -40,7 +41,12 @@ import { runPlanChecker } from "./subagents/planChecker.js";
 import { runImplementer } from "./subagents/implementer.js";
 import { runReviewer } from "./subagents/reviewer.js";
 import { runVerifier } from "./subagents/verifier.js";
-import { describeDirtyWorkingTree, isGitRepo, projectSupportsTaskWorktrees } from "./gitBranch.js";
+import {
+  describeDirtyWorkingTree,
+  isGitRepo,
+  projectSupportsTaskWorktrees,
+  projectUsesSharedBranchIsolation,
+} from "./gitBranch.js";
 import { flushActivityQueue } from "./hooks.js";
 import {
   notifyTaskBroadcast,
@@ -60,6 +66,7 @@ import {
 
 const log = logger("coordinator");
 const env = getEnv();
+const AUTO_QUEUE_COMMIT_GATE_ENABLED = env.AIF_AGENT_AUTO_QUEUE_COMMIT_GATE_ENABLED;
 const STAGE_RUN_TIMEOUT_MS = Math.max(env.AGENT_STAGE_RUN_TIMEOUT_MS, 60_000);
 const CLAIM_LOCK_DURATION_MS = STAGE_RUN_TIMEOUT_MS + 5 * 60 * 1000; // stage timeout + 5 min buffer
 export const COORDINATOR_ID = crypto.randomUUID();
@@ -272,6 +279,9 @@ function updateTaskStatus(
 }
 
 async function ensureCommitBeforeTerminalStatus(task: TaskRow, projectRoot: string): Promise<void> {
+  if (!AUTO_QUEUE_COMMIT_GATE_ENABLED) {
+    return;
+  }
   try {
     await ensureAutoQueueTaskCommit({ taskId: task.id, projectRoot });
   } finally {
@@ -285,6 +295,42 @@ function resolveAutoQueueCommitPreparation(
   return isGitRepo(projectRoot)
     ? { status: "pending", baseSha: getHeadCommitSha(projectRoot) }
     : { status: "not_applicable", baseSha: null };
+}
+
+function projectRequiresSerialExecution(project: ProjectRow): boolean {
+  const hasSharedBranchTask = hasActiveBranchBoundTasksForProject(project.id);
+  const taskWorktreesUnavailable =
+    !env.AIF_TASK_WORKTREES_ENABLED || !projectSupportsTaskWorktrees(project.rootPath);
+  const usesSharedBranchIsolation =
+    projectUsesSharedBranchIsolation(project.rootPath) && taskWorktreesUnavailable;
+  const usesAutoQueueSharedGitWorktree =
+    AUTO_QUEUE_COMMIT_GATE_ENABLED &&
+    project.autoQueueMode &&
+    isGitRepo(project.rootPath) &&
+    taskWorktreesUnavailable;
+
+  return hasSharedBranchTask || usesSharedBranchIsolation || usesAutoQueueSharedGitWorktree;
+}
+
+function scheduledTaskHasDirtyAutoQueueWorktree(
+  task: TaskRow,
+  project: ProjectRow | null | undefined,
+): boolean {
+  if (!AUTO_QUEUE_COMMIT_GATE_ENABLED || !project?.autoQueueMode) {
+    return false;
+  }
+
+  const projectRoot = task.worktreePath ?? project.rootPath;
+  const dirtyPreview = isGitRepo(projectRoot) ? describeDirtyWorkingTree(projectRoot) : null;
+  if (!dirtyPreview) {
+    return false;
+  }
+
+  log.warn(
+    { taskId: task.id, projectId: task.projectId, projectRoot, dirtyPreview },
+    "Scheduled auto-queue task deferred because its Git worktree is dirty",
+  );
+  return true;
 }
 
 function runtimeProfileModeForStage(stage: CoordinatorStage): "task" | "plan" | "review" {
@@ -738,8 +784,11 @@ export function processDueScheduledTasks(): number {
   for (const task of due) {
     try {
       const project = findProjectById(task.projectId);
+      if (scheduledTaskHasDirtyAutoQueueWorktree(task, project)) {
+        continue;
+      }
       const autoQueueCommit =
-        project?.autoQueueMode === true
+        AUTO_QUEUE_COMMIT_GATE_ENABLED && project?.autoQueueMode === true
           ? resolveAutoQueueCommitPreparation(task.worktreePath ?? project.rootPath)
           : undefined;
       // CAS-style claim: only proceed if the row is still backlog+unpaused
@@ -814,18 +863,15 @@ export function processAutoQueueAdvance(): number {
     // switch HEAD in the shared root, so they force serial execution. Projects
     // that support task worktrees can keep the parallel pool open because the
     // planner provisions an isolated cwd before mutating files.
-    const usesSharedGitWorkingTree =
-      (isGitRepo(project.rootPath) &&
-        (!env.AIF_TASK_WORKTREES_ENABLED || !projectSupportsTaskWorktrees(project.rootPath))) ||
-      hasActiveBranchBoundTasksForProject(project.id);
-    if (project.parallelEnabled && usesSharedGitWorkingTree) {
+    const requiresSerialExecution = projectRequiresSerialExecution(project);
+    if (project.parallelEnabled && requiresSerialExecution) {
       log.warn(
         { projectId: project.id, projectRoot: project.rootPath },
         "Auto-queue parallel pool disabled while tasks share one Git working tree",
       );
     }
     const limit =
-      project.parallelEnabled && !usesSharedGitWorkingTree
+      project.parallelEnabled && !requiresSerialExecution
         ? env.COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT
         : 1;
     let active = countActivePipelineTasksForProject(project.id);
@@ -838,10 +884,10 @@ export function processAutoQueueAdvance(): number {
       continue;
     }
 
-    if (hasBlockingAutoQueueCommitForProject(project.id)) {
+    if (AUTO_QUEUE_COMMIT_GATE_ENABLED && hasBlockingAutoQueueCommitForProject(project.id)) {
       log.warn(
         { projectId: project.id },
-        "[FIX:155] Auto-queue paused: a task has blocking commit state",
+        "Auto-queue paused because a task has blocking commit state",
       );
       continue;
     }
@@ -884,9 +930,9 @@ export function processAutoQueueAdvance(): number {
         // CAS-style claim: only proceed if the row is still backlog+unpaused.
         // If false, another pass (scheduler / parallel coordinator / human
         // start_ai click) won the race — re-read pool counters and continue.
-        const autoQueueCommit = resolveAutoQueueCommitPreparation(
-          next.worktreePath ?? project.rootPath,
-        );
+        const autoQueueCommit = AUTO_QUEUE_COMMIT_GATE_ENABLED
+          ? resolveAutoQueueCommitPreparation(next.worktreePath ?? project.rootPath)
+          : undefined;
         if (!claimBacklogTaskForAdvance(next.id, autoQueueCommit)) {
           log.debug(
             { taskId: next.id, projectId: project.id },
@@ -971,19 +1017,15 @@ async function runPollCycle(): Promise<void> {
       const project = findProjectById(projectId);
       const configuredParallel = project?.parallelEnabled ?? false;
       // Mirror processAutoQueueAdvance: config OR task-state forces serial.
-      const usesSharedGitWorkingTree = project
-        ? (isGitRepo(project.rootPath) &&
-            (!env.AIF_TASK_WORKTREES_ENABLED || !projectSupportsTaskWorktrees(project.rootPath))) ||
-          hasActiveBranchBoundTasksForProject(projectId)
-        : false;
+      const requiresSerialExecution = project ? projectRequiresSerialExecution(project) : false;
       cached = {
-        parallel: configuredParallel && !usesSharedGitWorkingTree,
+        parallel: configuredParallel && !requiresSerialExecution,
         max:
-          configuredParallel && !usesSharedGitWorkingTree
+          configuredParallel && !requiresSerialExecution
             ? env.COORDINATOR_MAX_CONCURRENT_TASKS_PER_PROJECT
             : 1,
       };
-      if (configuredParallel && usesSharedGitWorkingTree) {
+      if (configuredParallel && requiresSerialExecution) {
         log.warn(
           { projectId, projectRoot: project?.rootPath },
           "Project parallel execution forced to serial while tasks share one Git working tree",

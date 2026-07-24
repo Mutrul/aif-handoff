@@ -4,13 +4,14 @@ import { createTestDb } from "@aif/shared/server";
 import { RuntimeExecutionError } from "@aif/runtime";
 import { eq } from "drizzle-orm";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createGitTestRoot } from "./gitTestUtils.js";
 
 // Flag defaults to false (opt-in). Coordinator tests assert on persisted
 // limitSnapshot, which requires the gate to be open.
 process.env.AIF_USAGE_LIMITS_ENABLED = "true";
+process.env.AIF_AGENT_AUTO_QUEUE_COMMIT_GATE_ENABLED = "true";
 resetEnvCache();
 
 // Set up test db
@@ -20,24 +21,7 @@ const claimCoordinatorTaskIfEligibleMock = vi.fn();
 const executeSubagentQueryMock = vi.fn();
 
 function createGitRoot(prefix: string): string {
-  const rootPath = mkdtempSync(join(tmpdir(), prefix));
-  execFileSync("git", ["init", "--initial-branch=main"], { cwd: rootPath, stdio: "ignore" });
-  execFileSync("git", ["config", "user.email", "t@t.local"], {
-    cwd: rootPath,
-    stdio: "ignore",
-  });
-  execFileSync("git", ["config", "user.name", "T"], { cwd: rootPath, stdio: "ignore" });
-  execFileSync("git", ["config", "commit.gpgsign", "false"], {
-    cwd: rootPath,
-    stdio: "ignore",
-  });
-  writeFileSync(join(rootPath, "README.md"), "# auto queue\n");
-  execFileSync("git", ["add", "README.md"], { cwd: rootPath, stdio: "ignore" });
-  execFileSync("git", ["commit", "-m", "init", "--no-verify"], {
-    cwd: rootPath,
-    stdio: "ignore",
-  });
-  return rootPath;
+  return createGitTestRoot(prefix, { readme: "# auto queue\n" }).rootPath;
 }
 
 vi.mock("@aif/shared/server", async (importOriginal) => {
@@ -1712,19 +1696,7 @@ describe("coordinator", () => {
 
   it("should serialize branch-isolated parallel projects while task worktrees are disabled", async () => {
     const db = testDb.current;
-    const rootPath = mkdtempSync(join(tmpdir(), "coordinator-branch-isolated-"));
-    execFileSync("git", ["init", "--initial-branch=main"], { cwd: rootPath, stdio: "ignore" });
-    execFileSync("git", ["config", "user.email", "t@t.local"], {
-      cwd: rootPath,
-      stdio: "ignore",
-    });
-    execFileSync("git", ["config", "user.name", "T"], { cwd: rootPath, stdio: "ignore" });
-    writeFileSync(join(rootPath, "README.md"), "# t\n");
-    execFileSync("git", ["add", "README.md"], { cwd: rootPath, stdio: "ignore" });
-    execFileSync("git", ["commit", "-m", "init", "--no-verify"], {
-      cwd: rootPath,
-      stdio: "ignore",
-    });
+    const rootPath = createGitTestRoot("coordinator-branch-isolated-").rootPath;
 
     db.insert(projects)
       .values({
@@ -1757,6 +1729,46 @@ describe("coordinator", () => {
       ([, calledRoot]: [string, string]) => calledRoot === rootPath,
     );
     expect(plannerCalls).toHaveLength(1);
+  });
+
+  it("should preserve parallel execution for a non-auto-queue project sharing one Git worktree", async () => {
+    const db = testDb.current;
+    const rootPath = createGitTestRoot("coordinator-manual-shared-git-", {
+      configYaml: "git:\n  create_branches: false\n",
+    }).rootPath;
+
+    db.insert(projects)
+      .values({
+        id: "parallel-manual-git",
+        name: "Parallel Manual Git",
+        rootPath,
+        parallelEnabled: true,
+        autoQueueMode: false,
+      })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "manual-git-task-1",
+        projectId: "parallel-manual-git",
+        title: "T1",
+        status: "planning",
+      })
+      .run();
+    db.insert(tasks)
+      .values({
+        id: "manual-git-task-2",
+        projectId: "parallel-manual-git",
+        title: "T2",
+        status: "planning",
+      })
+      .run();
+
+    await pollAndProcess();
+
+    const plannerCalls = (runPlanner as any).mock.calls.filter(
+      ([, calledRoot]: [string, string]) => calledRoot === rootPath,
+    );
+    expect(plannerCalls).toHaveLength(2);
   });
 
   it("should process only 1 task at a time for non-parallel project", async () => {

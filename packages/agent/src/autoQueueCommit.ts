@@ -44,7 +44,7 @@ function recordCommitOutcome(
   );
   log.info(
     { taskId, status: outcome.status, commitSha: outcome.commitSha },
-    "[FIX:155] Auto-queue commit gate completed",
+    "Auto-queue commit gate completed",
   );
 }
 
@@ -58,7 +58,7 @@ function blockForCommitFailure(taskId: string, reason: string, err?: unknown): n
     updatedAt: failedAt,
   });
   appendTaskActivityLog(taskId, `[${failedAt}] [auto-queue-commit] Failed: ${reason}`);
-  log.error({ taskId, err, reason }, "[FIX:155] Auto-queue commit gate failed");
+  log.error({ taskId, err, reason }, "Auto-queue commit gate failed");
   throw new StageManualBlockError(reason);
 }
 
@@ -149,7 +149,7 @@ export async function ensureAutoQueueTaskCommit(input: {
       currentSha,
       dirty: Boolean(dirtyBefore),
     },
-    "[FIX:155] Evaluating auto-queue commit gate",
+    "Evaluating auto-queue commit gate",
   );
 
   if (!dirtyBefore) {
