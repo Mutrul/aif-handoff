@@ -1,6 +1,6 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
-import type { TaskStatus } from "./types.js";
+import type { AutoQueueCommitStatus, TaskStatus } from "./types.js";
 
 export const projects = sqliteTable("projects", {
   id: text("id")
@@ -12,6 +12,8 @@ export const projects = sqliteTable("projects", {
   planCheckerMaxBudgetUsd: real("plan_checker_max_budget_usd"),
   implementerMaxBudgetUsd: real("implementer_max_budget_usd"),
   reviewSidecarMaxBudgetUsd: real("review_sidecar_max_budget_usd"),
+  pinnedAt: text("pinned_at"),
+  groupName: text("group_name"),
   parallelEnabled: integer("parallel_enabled", { mode: "boolean" }).notNull().default(false),
   autoQueueMode: integer("auto_queue_mode", { mode: "boolean" }).notNull().default(false),
   defaultTaskRuntimeProfileId: text("default_task_runtime_profile_id"),
@@ -66,6 +68,8 @@ export const tasks = sqliteTable("tasks", {
   planTests: integer("plan_tests", { mode: "boolean" }).notNull().default(false),
   skipReview: integer("skip_review", { mode: "boolean" }).notNull().default(false),
   useSubagents: integer("use_subagents", { mode: "boolean" }).notNull().default(false),
+  runPlanImprove: integer("run_plan_improve", { mode: "boolean" }).notNull().default(false),
+  runPostVerify: integer("run_post_verify", { mode: "boolean" }).notNull().default(false),
   autoQa: integer("auto_qa", { mode: "boolean" }).notNull().default(false),
   qaChangeSummary: text("qa_change_summary"),
   qaTestPlan: text("qa_test_plan"),
@@ -114,6 +118,11 @@ export const tasks = sqliteTable("tasks", {
   scheduledAt: text("scheduled_at"),
   branchName: text("branch_name"),
   worktreePath: text("worktree_path"),
+  autoQueueCommitStatus: text("auto_queue_commit_status").$type<AutoQueueCommitStatus | null>(),
+  autoQueueCommitBaseSha: text("auto_queue_commit_base_sha"),
+  commitSha: text("commit_sha"),
+  autoQueueCommitError: text("auto_queue_commit_error"),
+  autoQueueCommitCompletedAt: text("auto_queue_commit_completed_at"),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),

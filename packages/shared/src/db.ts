@@ -48,6 +48,8 @@ function ensureTables(sqlite: Database.Database): void {
       plan_checker_max_budget_usd REAL,
       implementer_max_budget_usd REAL,
       review_sidecar_max_budget_usd REAL,
+      pinned_at TEXT,
+      group_name TEXT,
       parallel_enabled INTEGER NOT NULL DEFAULT 0,
       auto_queue_mode INTEGER NOT NULL DEFAULT 0,
       default_task_runtime_profile_id TEXT,
@@ -84,6 +86,8 @@ function ensureTables(sqlite: Database.Database): void {
       plan_tests INTEGER NOT NULL DEFAULT 0,
       skip_review INTEGER NOT NULL DEFAULT 0,
       use_subagents INTEGER NOT NULL DEFAULT 0,
+      run_plan_improve INTEGER NOT NULL DEFAULT 0,
+      run_post_verify INTEGER NOT NULL DEFAULT 0,
       auto_qa INTEGER NOT NULL DEFAULT 0,
       qa_change_summary TEXT,
       qa_test_plan TEXT,
@@ -127,6 +131,11 @@ function ensureTables(sqlite: Database.Database): void {
       scheduled_at TEXT,
       branch_name TEXT,
       worktree_path TEXT,
+      auto_queue_commit_status TEXT,
+      auto_queue_commit_base_sha TEXT,
+      commit_sha TEXT,
+      auto_queue_commit_error TEXT,
+      auto_queue_commit_completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
     )
@@ -720,6 +729,33 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE tasks ADD COLUMN qa_test_plan TEXT;
       ALTER TABLE tasks ADD COLUMN qa_test_cases TEXT;
       ALTER TABLE tasks ADD COLUMN qa_status TEXT NOT NULL DEFAULT 'idle';
+    `,
+  },
+  {
+    version: 24,
+    description: "Add optional skills-mode improve and verify task flags",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN run_plan_improve INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE tasks ADD COLUMN run_post_verify INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
+  {
+    version: 25,
+    description: "Add project pinning and flat grouping",
+    sql: `
+      ALTER TABLE projects ADD COLUMN pinned_at TEXT;
+      ALTER TABLE projects ADD COLUMN group_name TEXT;
+    `,
+  },
+  {
+    version: 26,
+    description: "Persist restart-safe auto-queue commit state and task commit SHA",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN auto_queue_commit_status TEXT;
+      ALTER TABLE tasks ADD COLUMN auto_queue_commit_base_sha TEXT;
+      ALTER TABLE tasks ADD COLUMN commit_sha TEXT;
+      ALTER TABLE tasks ADD COLUMN auto_queue_commit_error TEXT;
+      ALTER TABLE tasks ADD COLUMN auto_queue_commit_completed_at TEXT;
     `,
   },
 ];
