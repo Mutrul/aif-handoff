@@ -289,6 +289,38 @@ function mergeSystemPromptAppend(
   return values.join("\n\n");
 }
 
+/**
+ * Normalize Claude `settings.attribution` so empty `commit`/`pr` strings are
+ * dropped before reaching the CLI.
+ *
+ * Claude Code (>= 2.1.x) terminates the spawned process with exit code 1 when
+ * `settings.attribution` carries empty strings (`commit: ""` / `pr: ""`). The
+ * SDK swallows stderr, so this surfaces only as the opaque
+ * "Claude Code process exited with code 1". We strip empty fields and collapse
+ * to `{}` when nothing meaningful remains — `{}` and an absent `attribution`
+ * both work, empty strings do not.
+ *
+ * Non-empty values pass through unchanged.
+ */
+export function normalizeClaudeSettings(
+  raw: { attribution?: { commit?: string; pr?: string } } | undefined,
+): { attribution?: { commit?: string; pr?: string } } {
+  const attribution = raw?.attribution;
+  const commit =
+    typeof attribution?.commit === "string" && attribution.commit.trim().length > 0
+      ? attribution.commit
+      : undefined;
+  const pr =
+    typeof attribution?.pr === "string" && attribution.pr.trim().length > 0
+      ? attribution.pr
+      : undefined;
+  if (!commit && !pr) return {};
+  const normalized: { attribution: { commit?: string; pr?: string } } = { attribution: {} };
+  if (commit) normalized.attribution.commit = commit;
+  if (pr) normalized.attribution.pr = pr;
+  return normalized;
+}
+
 export const CLAUDE_EFFORT_LEVELS = ["low", "medium", "high", "max"] as const;
 export type ClaudeEffortLevel = (typeof CLAUDE_EFFORT_LEVELS)[number];
 const CLAUDE_NUMERIC_EFFORT_MAP: Record<number, ClaudeEffortLevel> = {
@@ -326,7 +358,7 @@ export function buildClaudeQueryOptions(
   });
 
   const mergedAppend = mergeSystemPromptAppend(input, execution);
-  const settings = execution.settings ?? { attribution: { commit: "", pr: "" } };
+  const settings = normalizeClaudeSettings(execution.settings);
   const resolvedEnvironment = resolveEnvironment(input, execution);
   logger?.debug?.(
     {
