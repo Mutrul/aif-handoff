@@ -57,7 +57,7 @@ function explainFailure(err: unknown, stderrTail: string): string {
   }
 
   if (baseMessage.toLowerCase().includes("exited with code 1")) {
-    return `${baseMessage}. No stderr/stdout details from SDK; likely auth or usage-limit issue`;
+    return `${baseMessage}. No stderr/stdout captured from the SDK. Likely causes: auth or usage-limit, or Claude Code rejected a settings value (e.g. an outdated Claude Code build rejecting empty attribution strings) — upgrade Claude Code and retry.`;
   }
 
   return baseMessage;

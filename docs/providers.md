@@ -195,6 +195,8 @@ Optional proxy mode:
 - if proxy requires explicit model, set `ANTHROPIC_MODEL` (or profile `defaultModel`)
 - if proxy handles model routing, keep `defaultModel` empty
 
+> **Attribution suppression:** the adapter forwards `settings.attribution = { commit: "", pr: "" }` — empty strings hide the Co-Authored-By trailers, per Claude Code's documented contract. Older Claude Code builds (<2.1.x fixed) rejected empty attribution strings at startup with an opaque "process exited with code 1"; use a current Claude Code to avoid this.
+
 ### Claude (CLI)
 
 Spawns `claude` binary as a subprocess. Supports `--agent` flag for agent definitions and `--resume` for session continuation. Auth is handled by the CLI's own login (`claude /login`).
