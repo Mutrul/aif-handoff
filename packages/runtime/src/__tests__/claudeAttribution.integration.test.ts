@@ -1,58 +1,89 @@
 import { describe, expect, it } from "vitest";
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
+import { createClaudeRuntimeAdapter } from "../adapters/claude/index.js";
+import {
+  CLAUDE_MIN_VERSION,
+  isVersionBelowMin,
+  parseClaudeVersion,
+  probeClaudeVersion,
+} from "../adapters/claude/version.js";
+import type { RuntimeRunInput } from "../types.js";
+import { TEST_USAGE_CONTEXT } from "./helpers/usageContext.js";
 
 /**
- * Behavioral verification of Co-Authored-By suppression — observes the *generated
- * commit content*, not just the intermediate options object (requested in PR #162 review).
+ * Behavioral smoke test for the formerly-crashing `/chat` path — requested in
+ * PR #162 review ("execute the real Handoff SDK adapter path ... with the
+ * default suppression settings and confirm that the query starts and completes").
+ *
+ * It exercises the real adapter end to end (`createClaudeRuntimeAdapter().run`)
+ * — `parseExecutionOptions` → version guard → `runClaudeRuntime` →
+ * `buildClaudeQueryOptions` (which applies the default suppression
+ * `settings.attribution = { commit: "", pr: "" }`) → Agent SDK `query` → stream.
+ * A green result here proves the empty-attribution payload starts and completes
+ * against the effective Claude Code binary, i.e. the HTTP 500 regression is gone.
  *
  * Gated: requires a real, authenticated `claude` on PATH AND
  * `AIF_CLAUDE_INTEGRATION=1`. CI does not satisfy this, so the main suite stays
  * hermetic. Run locally with:
  *   AIF_CLAUDE_INTEGRATION=1 npx vitest run claudeAttribution.integration.test.ts
  *
- * Note: in the Agent SDK + Bash-commit path the Co-Authored-By trailer is not
- * injected regardless of attribution; this test therefore guards the observed
- * end state (agent commits carry no Co-Authored-By) under the adapter's default
- * suppression settings `{ attribution: { commit: "", pr: "" } }`.
+ * The previous version of this file asserted that a generated git commit lacked
+ * a Co-Authored-By trailer. That assertion was non-discriminating: in the Agent
+ * SDK + Bash-commit path the trailer is not injected regardless of attribution,
+ * so the test passed identically for `{ attribution: { commit: "", pr: "" } }`,
+ * `{}`, and no `settings` at all — it could not catch the regression. It is
+ * replaced by this startup/completion smoke test, which directly observes the
+ * failure mode (startup exit-code 1).
  */
 const ENABLED = process.env.AIF_CLAUDE_INTEGRATION === "1";
 
-describe.skipIf(!ENABLED)("Claude attribution — generated commit content (integration)", () => {
-  it("produces a commit with no Co-Authored-By trailer under the suppression settings", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "claude-attr-int-"));
+const silentLogger = {
+  debug() {},
+  info() {},
+  warn() {},
+  error() {},
+};
+
+describe.skipIf(!ENABLED)("Claude runtime — default suppression settings (integration)", () => {
+  it("starts and completes a run under the default empty-attribution settings", async () => {
+    // The effective Claude Code binary must be at/above the supported minimum,
+    // otherwise the version guard (exercised by adapter.run) rejects the run
+    // before it starts — which is itself the correct, non-opaque failure mode.
+    const probe = await probeClaudeVersion(undefined);
+    const version = probe.info ?? parseClaudeVersion(probe.raw ?? "");
+    expect(
+      version && !isVersionBelowMin(version),
+      `Claude Code ${version?.raw ?? "unknown"} is below the supported minimum ${CLAUDE_MIN_VERSION}`,
+    ).toBe(true);
+
+    const cwd = mkdtempSync(join(tmpdir(), "claude-attr-smoke-"));
     try {
-      execSync("git init -q -b main", { cwd: dir });
-      execSync('git config user.email "int@test.local"', { cwd: dir });
-      execSync('git config user.name "int"', { cwd: dir });
-      writeFileSync(join(dir, "hello.txt"), "test\n");
-      execSync("git add hello.txt", { cwd: dir });
+      const adapter = createClaudeRuntimeAdapter({ logger: silentLogger });
+      const input: RuntimeRunInput = {
+        runtimeId: "claude",
+        providerId: "anthropic",
+        prompt: "Reply with exactly this and nothing else: OK",
+        cwd,
+        projectRoot: cwd,
+        // No `execution.hooks.settings` override → buildClaudeQueryOptions
+        // applies the default suppression { attribution: { commit: "", pr: "" } },
+        // the exact payload that crashed older Claude Code builds at startup.
+        execution: { hooks: { runTimeoutMs: 60_000 } },
+        usageContext: TEST_USAGE_CONTEXT,
+      };
 
-      let result: { subtype?: string } | null = null;
-      const stream = query({
-        prompt:
-          "There is one staged file. Run a git commit with exactly this message and nothing else: add hello",
-        options: {
-          cwd: dir,
-          // The adapter's default suppression settings (see buildClaudeQueryOptions).
-          settings: { attribution: { commit: "", pr: "" } },
-          settingSources: ["project"],
-          permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
-        },
-      });
-      for await (const event of stream) {
-        if (event.type === "result") result = event as { subtype?: string };
-      }
+      const result = await adapter.run(input);
 
-      expect(result?.subtype).toBe("success");
-      const body = execSync("git log -1 --format=%B", { cwd: dir, encoding: "utf8" });
-      expect(/co-authored-by/i.test(body)).toBe(false);
+      // Completed with output — the run started (did not exit with code 1) and
+      // produced a result through the Agent SDK stream.
+      expect(typeof result.outputText).toBe("string");
+      expect((result.outputText ?? "").trim().length).toBeGreaterThan(0);
+      const completed = (result.events ?? []).some((event) => event.type === "result:success");
+      expect(completed).toBe(true);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true });
     }
-  });
+  }, 90_000);
 });

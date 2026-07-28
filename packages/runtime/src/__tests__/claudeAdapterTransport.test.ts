@@ -58,10 +58,14 @@ describe("Claude adapter — transport routing and capabilities", () => {
       expect(result.outputText).toBe("sdk-output");
       expect(runClaudeRuntimeMock).toHaveBeenCalledTimes(1);
       expect(runClaudeCliMock).not.toHaveBeenCalled();
-      expect(runClaudeRuntimeMock.mock.calls[0][2]).toEqual({
-        pathToClaudeCodeExecutable:
-          "C:\\nvm4w\\nodejs\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
-      });
+      expect(runClaudeRuntimeMock.mock.calls[0][2]).toEqual(
+        expect.objectContaining({
+          pathToClaudeCodeExecutable:
+            "C:\\nvm4w\\nodejs\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+          // The auto-discovered CLI path is forwarded as the version-guard probe fallback.
+          discoveredExecutablePath: "C:\\nvm4w\\nodejs\\claude",
+        }),
+      );
     });
 
     it("routes to CLI transport when transport is 'cli'", async () => {

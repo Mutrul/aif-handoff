@@ -2,6 +2,7 @@ import type { RuntimeRunInput, RuntimeRunResult } from "../../types.js";
 import { isRetriableTimeoutError, resolveRetryDelay } from "../../timeouts.js";
 import { classifyClaudeRuntimeError } from "./errors.js";
 import { parseExecutionOptions } from "./options.js";
+import { assertClaudeExecutableCompatible } from "./version.js";
 import { runClaudeQueryAttempt } from "./stream.js";
 
 export type { ClaudeRuntimeExecutionOptions } from "./options.js";
@@ -71,9 +72,28 @@ function toResult(attempt: {
 export async function runClaudeRuntime(
   input: RuntimeRunInput,
   logger: ClaudeRuntimeRunLogger,
-  adapterDefaults?: { pathToClaudeCodeExecutable?: string },
+  adapterDefaults?: {
+    pathToClaudeCodeExecutable?: string;
+    /** Auto-discovered CLI path used as a probe fallback for the version guard. */
+    discoveredExecutablePath?: string;
+  },
 ): Promise<RuntimeRunResult> {
   const execution = parseExecutionOptions(input, adapterDefaults);
+
+  // Enforce the minimum Claude Code version before starting the run. Older
+  // builds reject the empty attribution strings (Co-Authored-By suppression)
+  // and exit with code 1; this surfaces an actionable error instead. Probes
+  // the explicit SDK path, falling back to the auto-discovered CLI path.
+  await assertClaudeExecutableCompatible(
+    execution.pathToClaudeCodeExecutable ?? adapterDefaults?.discoveredExecutablePath,
+    logger,
+    {
+      runtimeId: input.runtimeId,
+      providerId: input.providerId ?? "anthropic",
+      profileId: input.profileId ?? null,
+    },
+  );
+
   const retryDelayMs = resolveRetryDelay({
     startRetryDelayMs: execution.queryStartRetryDelayMs,
   });

@@ -513,8 +513,13 @@ export function createClaudeRuntimeAdapter(
     if (transport === RuntimeTransport.CLI) {
       return runClaudeCli(input, logger, { pathToClaudeCodeExecutable: executablePath });
     }
-    // SDK and API both go through the Agent SDK runtime
-    return runClaudeRuntime(input, logger, { pathToClaudeCodeExecutable: sdkExecutablePath });
+    // SDK and API both go through the Agent SDK runtime. `discoveredExecutablePath`
+    // gives the version guard a fallback to probe when the SDK path was normalized
+    // away (bare Unix wrapper) — see runClaudeRuntime.
+    return runClaudeRuntime(input, logger, {
+      pathToClaudeCodeExecutable: sdkExecutablePath,
+      discoveredExecutablePath: executablePath,
+    });
   }
 
   async function forkByTransport(input: RuntimeSessionForkInput): Promise<RuntimeRunResult> {

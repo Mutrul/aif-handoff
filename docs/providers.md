@@ -195,7 +195,11 @@ Optional proxy mode:
 - if proxy requires explicit model, set `ANTHROPIC_MODEL` (or profile `defaultModel`)
 - if proxy handles model routing, keep `defaultModel` empty
 
-> **Attribution suppression:** the adapter forwards `settings.attribution = { commit: "", pr: "" }` — empty strings hide the Co-Authored-By trailers, per Claude Code's documented contract. Older Claude Code builds (<2.1.x fixed) rejected empty attribution strings at startup with an opaque "process exited with code 1"; use a current Claude Code to avoid this.
+> **Attribution suppression:** the adapter forwards `settings.attribution = { commit: "", pr: "" }` — empty strings hide the Co-Authored-By trailers, per Claude Code's documented contract. These empty strings are forwarded verbatim (not normalized away); collapsing them to `{}` would restore Claude Code's default attribution.
+
+**Minimum Claude Code version: `2.1.191`.** Older builds reject empty attribution strings at startup and the spawned `claude` exits with code 1 and no stderr, which surfaces as the opaque `Claude Code process exited with code 1`. Before every SDK/API run the adapter probes the effective executable's version and fails fast with an actionable `CLAUDE_VERSION_UNSUPPORTED` (category `transport`) error when it is below `2.1.191`, instead of failing opaquely inside the Agent SDK. If the version cannot be determined (binary not on PATH, unparseable output), the check is skipped with a warning and the run proceeds — the real failure, if any, is then explained by the runtime diagnostics.
+
+**Effective executable selection.** The SDK transport resolves the `claude` binary in this order: an explicit `pathToClaudeCodeExecutable` / `claudeCliPath` (per-profile or via `execution.hooks`), then the auto-discovered global install (`findClaudePath()` — `/usr/local/bin/claude`, `~/.local/bin/claude`, npm global prefix, `which claude`), and finally the Agent SDK's own resolution. `normalizeSdkExecutablePath()` drops bare Unix wrapper paths so the SDK can do its own lookup. The Docker image pins the global install via the `CLAUDE_CODE_VERSION` build arg (`2.1.220` by default; override with `--build-arg CLAUDE_CODE_VERSION=...`). To bypass the runtime check in a non-Docker setup, set `AIF_CLAUDE_SKIP_VERSION_CHECK=1`.
 
 ### Claude (CLI)
 

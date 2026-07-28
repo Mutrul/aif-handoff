@@ -6,7 +6,7 @@
 
 - **Docker** — Docker Desktop or compatible runtime
 - **Node.js** 20.19+ or 22.12+ and **npm** 10+ — only needed if running without Docker
-- **Claude Code CLI** — only needed if running without Docker (`npm i -g @anthropic-ai/claude-code`). The Agent SDK spawns Claude Code as a subprocess, so the CLI must be installed globally
+- **Claude Code CLI** — only needed if running without Docker (`npm i -g @anthropic-ai/claude-code`, version `>= 2.1.191`). The Agent SDK spawns Claude Code as a subprocess, so the CLI must be installed globally. Older builds reject the empty attribution strings used to suppress Co-Authored-By trailers and crash at startup; the runtime enforces `>= 2.1.191` and fails fast with `CLAUDE_VERSION_UNSUPPORTED` otherwise
 - **Claude subscription** or Anthropic API key (for agent features)
 
 ## Quick Start with Docker
@@ -130,7 +130,7 @@ despite the Docker layer cache.
 ## Installation without Docker
 
 ```bash
-npm i -g @anthropic-ai/claude-code   # required — Agent SDK uses Claude Code CLI
+npm i -g @anthropic-ai/claude-code@latest   # required — Agent SDK uses Claude Code CLI (>= 2.1.191)
 git clone https://github.com/lee-to/aif-handoff.git
 cd aif-handoff
 npm install

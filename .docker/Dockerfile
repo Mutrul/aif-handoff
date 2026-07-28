@@ -64,8 +64,14 @@ ENV NODE_ENV=production \
     HOME=/home/node \
     CODEX_CLI_PATH=/app/node_modules/.bin/codex \
     PATH=/app/node_modules/.bin:${PATH}
+# Claude Code CLI — Agent SDK spawns it as a subprocess. Pinned (not `latest`)
+# so the image is reproducible and guaranteed compatible: builds below 2.1.191
+# reject the empty attribution strings used to suppress Co-Authored-By trailers
+# and exit with code 1. Override with `--build-arg CLAUDE_CODE_VERSION=...`; the
+# runtime adapter additionally enforces >= 2.1.191 via the version guard.
+ARG CLAUDE_CODE_VERSION=2.1.220
 RUN apt-install ca-certificates gosu git \
-    && npm i -g @anthropic-ai/claude-code
+    && npm i -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/packages/shared ./packages/shared
 COPY --chown=node:node --from=build /app/packages/data ./packages/data
@@ -111,8 +117,9 @@ ENV NODE_ENV=production \
 # backs spec validation. When absent, those gates do not fail — they SKIP, staying
 # registered while enforcing nothing, which reads as a pass in any settings audit.
 # Diagnosed 2026-07-23 by a parity audit run live inside this image.
+ARG CLAUDE_CODE_VERSION=2.1.220
 RUN apt-install ca-certificates gosu git curl jq python3 gh \
-    && npm i -g @anthropic-ai/claude-code
+    && npm i -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/packages/shared ./packages/shared
 COPY --chown=node:node --from=build /app/packages/data ./packages/data
