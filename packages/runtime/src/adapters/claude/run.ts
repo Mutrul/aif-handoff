@@ -74,25 +74,23 @@ export async function runClaudeRuntime(
   logger: ClaudeRuntimeRunLogger,
   adapterDefaults?: {
     pathToClaudeCodeExecutable?: string;
-    /** Auto-discovered CLI path used as a probe fallback for the version guard. */
-    discoveredExecutablePath?: string;
   },
 ): Promise<RuntimeRunResult> {
   const execution = parseExecutionOptions(input, adapterDefaults);
 
   // Enforce the minimum Claude Code version before starting the run. Older
   // builds reject the empty attribution strings (Co-Authored-By suppression)
-  // and exit with code 1; this surfaces an actionable error instead. Probes
-  // the explicit SDK path, falling back to the auto-discovered CLI path.
-  await assertClaudeExecutableCompatible(
-    execution.pathToClaudeCodeExecutable ?? adapterDefaults?.discoveredExecutablePath,
-    logger,
-    {
-      runtimeId: input.runtimeId,
-      providerId: input.providerId ?? "anthropic",
-      profileId: input.profileId ?? null,
-    },
-  );
+  // and exit with code 1; this surfaces an actionable error instead. The guard
+  // inspects the exact binary `query()` will launch: the explicit
+  // `pathToClaudeCodeExecutable` when configured, otherwise the Agent SDK's
+  // bundled binary (read from its manifest). It never probes an unrelated
+  // `claude` on PATH — that would validate a different artifact than the SDK
+  // starts and produce a false compatibility signal.
+  await assertClaudeExecutableCompatible(execution.pathToClaudeCodeExecutable, logger, {
+    runtimeId: input.runtimeId,
+    providerId: input.providerId ?? "anthropic",
+    profileId: input.profileId ?? null,
+  });
 
   const retryDelayMs = resolveRetryDelay({
     startRetryDelayMs: execution.queryStartRetryDelayMs,

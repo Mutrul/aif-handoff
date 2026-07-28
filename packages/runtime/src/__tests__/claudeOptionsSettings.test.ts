@@ -62,3 +62,25 @@ describe("buildClaudeQueryOptions — settings forwarding", () => {
     });
   });
 });
+
+describe("buildClaudeQueryOptions — executable selection (guard invariant)", () => {
+  // The version guard must inspect the same binary `query()` launches
+  // (probed === launched). With no explicit override the SDK runs its bundled
+  // binary, so the option must be absent and the guard reads the SDK manifest;
+  // with an explicit override the same path is both probed and forwarded.
+  it("omits pathToClaudeCodeExecutable when none is configured (SDK uses bundled binary)", () => {
+    const options = buildClaudeQueryOptions(baseInput, {
+      pathToClaudeCodeExecutable: undefined,
+    } satisfies ClaudeRuntimeExecutionOptions);
+
+    expect(Object.prototype.hasOwnProperty.call(options, "pathToClaudeCodeExecutable")).toBe(false);
+  });
+
+  it("forwards an explicit pathToClaudeCodeExecutable so the guard and query() share it", () => {
+    const options = buildClaudeQueryOptions(baseInput, {
+      pathToClaudeCodeExecutable: "/usr/local/bin/claude",
+    } satisfies ClaudeRuntimeExecutionOptions);
+
+    expect(options.pathToClaudeCodeExecutable).toBe("/usr/local/bin/claude");
+  });
+});

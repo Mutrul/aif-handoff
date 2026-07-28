@@ -64,11 +64,15 @@ ENV NODE_ENV=production \
     HOME=/home/node \
     CODEX_CLI_PATH=/app/node_modules/.bin/codex \
     PATH=/app/node_modules/.bin:${PATH}
-# Claude Code CLI — Agent SDK spawns it as a subprocess. Pinned (not `latest`)
-# so the image is reproducible and guaranteed compatible: builds below 2.1.191
-# reject the empty attribution strings used to suppress Co-Authored-By trailers
-# and exit with code 1. Override with `--build-arg CLAUDE_CODE_VERSION=...`; the
-# runtime adapter additionally enforces >= 2.1.191 via the version guard.
+# Claude Code CLI. NOTE: the SDK transport does NOT spawn this — `@anthropic-ai/
+# claude-agent-sdk` (pinned in package.json, currently bundling Claude Code
+# 2.1.220 via its per-platform native binary) launches its own bundled binary,
+# and the runtime version guard inspects that exact artifact. This global
+# install backs the CLI transport, the connection/diagnostic probes, and any
+# explicit `pathToClaudeCodeExecutable` override. Pinned (not `latest`) so the
+# image is reproducible; builds below 2.1.191 reject the empty attribution
+# strings used to suppress Co-Authored-By trailers and exit with code 1.
+# Override with `--build-arg CLAUDE_CODE_VERSION=...`.
 ARG CLAUDE_CODE_VERSION=2.1.220
 RUN apt-install ca-certificates gosu git \
     && npm i -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
@@ -117,6 +121,8 @@ ENV NODE_ENV=production \
 # backs spec validation. When absent, those gates do not fail — they SKIP, staying
 # registered while enforcing nothing, which reads as a pass in any settings audit.
 # Diagnosed 2026-07-23 by a parity audit run live inside this image.
+# Claude Code CLI: backs the CLI transport + probes only (the SDK transport uses
+# the binary bundled with @anthropic-ai/claude-agent-sdk). See the api stage above.
 ARG CLAUDE_CODE_VERSION=2.1.220
 RUN apt-install ca-certificates gosu git curl jq python3 gh \
     && npm i -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}

@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { ClaudeRuntimeAdapterError } from "./errors.js";
 
 /**
@@ -13,9 +16,13 @@ import { ClaudeRuntimeAdapterError } from "./errors.js";
  * them instead of failing inside the SDK.
  *
  * 2.1.191 is the first release verified to accept empty attribution strings
- * via the SDK transport. The effective executable is also pinned in the Docker
- * image via `CLAUDE_CODE_VERSION` (see `.docker/Dockerfile`); this guard is
- * the runtime backstop for non-Docker / custom-executable environments.
+ * via the SDK transport. The primary compatibility mechanism is the pinned
+ * `@anthropic-ai/claude-agent-sdk`, whose bundled native Claude Code binary
+ * (declared in its `manifest.json`, see {@link readBundledClaudeVersion})
+ * ships at or above this minimum. This guard is the runtime backstop that
+ * verifies the *exact* binary `query()` will launch — the bundled one (read
+ * from the manifest) when no executable override is configured, or the
+ * explicit `pathToClaudeCodeExecutable` otherwise.
  */
 export const CLAUDE_MIN_VERSION = "2.1.191";
 
@@ -67,6 +74,35 @@ export interface ClaudeVersionProbe {
 
 export interface ProbeClaudeVersionOptions {
   timeoutMs?: number;
+}
+
+/**
+ * Read the version of the Claude Code binary the Agent SDK launches when
+ * `pathToClaudeCodeExecutable` is not specified.
+ *
+ * The SDK ships a per-platform native binary whose exact version is declared
+ * in its `manifest.json` (`version` field). Reading that file yields the
+ * precise artifact `query()` will run — no `--version` spawn, no PATH lookup,
+ * and no platform/musl resolution ambiguity. This is how the version guard
+ * inspects the *same* binary that will execute the run when no override is
+ * configured (the invariant the guard exists to preserve).
+ *
+ * Resolves the package via its main entry and reads `manifest.json` from the
+ * same directory (the SDK's `exports` map does not expose `manifest.json`
+ * directly). Returns `null` when the package, file, or version cannot be
+ * resolved so the caller can degrade (warn + proceed).
+ */
+export function readBundledClaudeVersion(): ClaudeVersion | null {
+  try {
+    const moduleRequire = createRequire(import.meta.url);
+    const mainPath = moduleRequire.resolve("@anthropic-ai/claude-agent-sdk");
+    const manifestPath = join(dirname(mainPath), "manifest.json");
+    if (!existsSync(manifestPath)) return null;
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { version?: unknown };
+    return parseClaudeVersion(typeof manifest.version === "string" ? manifest.version : "");
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -150,6 +186,8 @@ export interface AssertClaudeVersionDeps {
     executablePath: string | undefined,
     options?: ProbeClaudeVersionOptions,
   ) => Promise<ClaudeVersionProbe>;
+  /** Test hook: inject a fake bundled-version reader instead of reading manifest.json. */
+  readBundledClaudeVersion?: () => ClaudeVersion | null;
 }
 
 interface CachedProbe {
@@ -159,10 +197,75 @@ interface CachedProbe {
 /** Process-lifetime cache keyed by executable path (versions do not change mid-process). */
 const probeCache = new Map<string, CachedProbe>();
 
-function formatUpgradeHint(executablePath: string | undefined): string {
-  return executablePath
-    ? `Upgrade the binary at ${executablePath}: npm i -g @anthropic-ai/claude-code@latest`
-    : "Install/upgrade Claude Code: npm i -g @anthropic-ai/claude-code@latest";
+/**
+ * Upgrade guidance for the below-minimum error. For an explicit executable
+ * override the user controls that binary (`npm i -g`); for the SDK-bundled
+ * binary the version is coupled to `@anthropic-ai/claude-agent-sdk`, so the
+ * fix is to bump that dependency.
+ */
+function formatUpgradeHint(
+  source: "explicit" | "bundled",
+  executablePath: string | undefined,
+): string {
+  return source === "bundled"
+    ? "Upgrade @anthropic-ai/claude-agent-sdk in this project to a release whose bundled Claude Code is at or above the minimum"
+    : executablePath
+      ? `Upgrade the binary at ${executablePath}: npm i -g @anthropic-ai/claude-code@latest`
+      : "Install/upgrade Claude Code: npm i -g @anthropic-ai/claude-code@latest";
+}
+
+interface ResolvedVersion {
+  info: ClaudeVersion | null;
+  raw: string | null;
+  error: string | null;
+  source: "explicit" | "bundled";
+}
+
+/**
+ * Resolve the version of the exact Claude Code binary `query()` will launch:
+ *
+ * - `executablePath` set → spawn `<path> --version`. `buildClaudeQueryOptions`
+ *   forwards the same path to `query()`, so the probed artifact is the launched
+ *   artifact.
+ * - `executablePath` unset → the Agent SDK runs its bundled native binary; read
+ *   that version from `manifest.json` via {@link readBundledClaudeVersion}. No
+ *   PATH lookup, so the guard never inspects a different `claude` than the one
+ *   the SDK starts.
+ *
+ * Results are cached per key for the process lifetime (skipped when dependency
+ * injection is used, so unit tests stay hermetic).
+ */
+async function resolveEffectiveVersion(
+  executablePath: string | undefined,
+  probeFn: NonNullable<AssertClaudeVersionDeps["probeClaudeVersion"]>,
+  readBundledFn: NonNullable<AssertClaudeVersionDeps["readBundledClaudeVersion"]>,
+  deps: AssertClaudeVersionDeps | undefined,
+): Promise<ResolvedVersion> {
+  if (executablePath) {
+    const cacheKey = executablePath;
+    let probe = deps ? undefined : probeCache.get(cacheKey)?.probe;
+    if (!probe) {
+      probe = await probeFn(executablePath);
+      if (!deps) probeCache.set(cacheKey, { probe });
+    }
+    return { ...probe, source: "explicit" };
+  }
+
+  const cacheKey = "<bundled>";
+  let probe = deps ? undefined : probeCache.get(cacheKey)?.probe;
+  if (!probe) {
+    const info = readBundledFn();
+    probe = info
+      ? { info, raw: info.raw, error: null }
+      : {
+          info: null,
+          raw: null,
+          error:
+            "Unable to read the bundled Claude Code version from @anthropic-ai/claude-agent-sdk manifest.json",
+        };
+    if (!deps) probeCache.set(cacheKey, { probe });
+  }
+  return { ...probe, source: "bundled" };
 }
 
 /**
@@ -171,11 +274,16 @@ function formatUpgradeHint(executablePath: string | undefined): string {
  * - Below minimum → throws {@link ClaudeRuntimeAdapterError} (code
  *   `CLAUDE_VERSION_UNSUPPORTED`, category `transport`) with an actionable
  *   message, instead of the opaque `Claude Code process exited with code 1`.
- * - Version undeterminable (binary missing / unparseable output) → logs a
- *   warning and proceeds; the run itself surfaces real failures via
- *   {@link import("./diagnostics.js").diagnoseClaudeError}. Enforcing on
- *   uncertainty would block valid setups (bundled SDK binary, odd PATH).
+ * - Version undeterminable (binary missing / unparseable output / manifest
+ *   unreadable) → logs a warning and proceeds; the run itself surfaces real
+ *   failures via {@link import("./diagnostics.js").diagnoseClaudeError}.
+ *   Enforcing on uncertainty would block valid setups.
  * - At/above minimum → logs the effective version at debug.
+ *
+ * The inspected binary is always the one `query()` will launch: the explicit
+ * `pathToClaudeCodeExecutable` when one is configured, otherwise the Agent
+ * SDK's bundled binary (version read from `manifest.json`). The guard never
+ * probes an unrelated `claude` on PATH.
  *
  * Skipped entirely in unit tests (`NODE_ENV === "test"` without the integration
  * flag), when the SDK query is mocked, or when
@@ -197,23 +305,21 @@ export async function assertClaudeExecutableCompatible(
     return;
   }
   const probeFn = deps?.probeClaudeVersion ?? probeClaudeVersion;
-  const cacheKey = executablePath ?? "<PATH>";
+  const readBundledFn = deps?.readBundledClaudeVersion ?? readBundledClaudeVersion;
 
-  let entry = probeCache.get(cacheKey);
-  if (!entry || deps) {
-    const probe = await probeFn(executablePath);
-    entry = { probe };
-    if (!deps) {
-      probeCache.set(cacheKey, entry);
-    }
-  }
-  const { info, raw, error } = entry.probe;
+  const { info, raw, error, source } = await resolveEffectiveVersion(
+    executablePath,
+    probeFn,
+    readBundledFn,
+    deps,
+  );
 
   if (!info) {
     logger?.warn?.(
       {
         ...context,
         executablePath: executablePath ?? null,
+        versionSource: source,
         probeError: error,
         probeOutput: raw,
         minVersion: CLAUDE_MIN_VERSION,
@@ -223,11 +329,16 @@ export async function assertClaudeExecutableCompatible(
     return;
   }
 
+  const location =
+    source === "bundled"
+      ? "bundled with @anthropic-ai/claude-agent-sdk"
+      : (executablePath ?? "PATH");
+
   if (isVersionBelowMin(info)) {
     throw new ClaudeRuntimeAdapterError(
-      `Claude Code ${info.raw} at ${executablePath ?? "PATH"} is below the supported minimum ` +
+      `Claude Code ${info.raw} at ${location} is below the supported minimum ` +
         `${CLAUDE_MIN_VERSION}: older builds reject the empty attribution strings used to suppress ` +
-        `Co-Authored-By trailers and exit with code 1. ${formatUpgradeHint(executablePath)}`,
+        `Co-Authored-By trailers and exit with code 1. ${formatUpgradeHint(source, executablePath)}`,
       "CLAUDE_VERSION_UNSUPPORTED",
       "transport",
     );
@@ -237,6 +348,7 @@ export async function assertClaudeExecutableCompatible(
     {
       ...context,
       executablePath: executablePath ?? null,
+      versionSource: source,
       claudeVersion: info.raw,
       minVersion: CLAUDE_MIN_VERSION,
     },

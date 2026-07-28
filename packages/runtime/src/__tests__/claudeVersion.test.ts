@@ -4,6 +4,8 @@ import {
   assertClaudeExecutableCompatible,
   isVersionBelowMin,
   parseClaudeVersion,
+  probeClaudeVersion,
+  readBundledClaudeVersion,
   type ClaudeVersionProbe,
 } from "../adapters/claude/version.js";
 import { ClaudeRuntimeAdapterError } from "../adapters/claude/errors.js";
@@ -56,8 +58,30 @@ describe("isVersionBelowMin", () => {
   });
 });
 
+describe("readBundledClaudeVersion", () => {
+  it("reads the version of the Claude Code binary bundled with the installed Agent SDK", () => {
+    // Real call against the installed @anthropic-ai/claude-agent-sdk manifest.
+    // Guards the manifest-resolution path (exports-restricted subpath resolved
+    // via the main entry) and asserts the dependency we pin actually bundles a
+    // Claude Code at/above the supported minimum.
+    const version = readBundledClaudeVersion();
+    expect(version, "expected a parseable bundled version from the SDK manifest").not.toBeNull();
+    expect(isVersionBelowMin(version!)).toBe(false);
+  });
+});
+
+describe("probeClaudeVersion", () => {
+  it("returns { info: null } for a missing executable instead of rejecting", async () => {
+    const result = await probeClaudeVersion("/nonexistent/claude-path-that-does-not-exist");
+    expect(result.info).toBeNull();
+    expect(result.error).toMatch(/not found|Failed to probe/i);
+  });
+});
+
 const probe = (info: ClaudeVersionProbe["info"], raw = "", error: string | null = null) =>
   vi.fn().mockResolvedValue({ info, raw, error } as ClaudeVersionProbe);
+
+const bundled = (info: ClaudeVersionProbe["info"]) => vi.fn(() => info);
 
 const recordingLogger = () => {
   const calls = { debug: [] as unknown[], warn: [] as unknown[] };
@@ -108,26 +132,107 @@ describe("assertClaudeExecutableCompatible", () => {
     ).rejects.toThrow(/npm i -g @anthropic-ai\/claude-code@latest/);
   });
 
-  it("does not throw and warns when the version cannot be determined", async () => {
-    const probeFn = probe(null, "", "Claude executable not found: claude");
+  it("does not throw and warns when the bundled version cannot be determined", async () => {
+    // No explicit path → guard reads the SDK-bundled version, not PATH.
+    const probeFn = probe(parseClaudeVersion("2.1.220"));
+    const bundledFn = bundled(null);
     const { logger, calls } = recordingLogger();
 
     await expect(
-      assertClaudeExecutableCompatible(undefined, logger, {}, { probeClaudeVersion: probeFn }),
+      assertClaudeExecutableCompatible(
+        undefined,
+        logger,
+        {},
+        { probeClaudeVersion: probeFn, readBundledClaudeVersion: bundledFn },
+      ),
     ).resolves.toBeUndefined();
+    expect(bundledFn).toHaveBeenCalled();
+    expect(probeFn).not.toHaveBeenCalled();
     expect(calls.warn).toHaveLength(1);
     expect(calls.debug).toHaveLength(0);
   });
 
-  it("does not throw and logs the version when at/above the minimum", async () => {
-    const probeFn = probe(parseClaudeVersion("2.1.220"), "2.1.220");
+  it("does not throw and logs the bundled version when at/above the minimum", async () => {
+    const probeFn = probe(parseClaudeVersion("2.1.90"));
+    const bundledFn = bundled(parseClaudeVersion("2.1.220"));
     const { logger, calls } = recordingLogger();
 
     await expect(
-      assertClaudeExecutableCompatible(undefined, logger, {}, { probeClaudeVersion: probeFn }),
+      assertClaudeExecutableCompatible(
+        undefined,
+        logger,
+        {},
+        { probeClaudeVersion: probeFn, readBundledClaudeVersion: bundledFn },
+      ),
     ).resolves.toBeUndefined();
+    expect(bundledFn).toHaveBeenCalled();
+    // The bundled version is used; the (lower) PATH probe is never consulted.
+    expect(probeFn).not.toHaveBeenCalled();
     expect(calls.debug).toHaveLength(1);
     expect(calls.warn).toHaveLength(0);
+    expect((calls.debug[0] as unknown[])[0]).toMatchObject({
+      versionSource: "bundled",
+      claudeVersion: "2.1.220",
+    });
+  });
+
+  it("throws when the bundled version is below the minimum and points at the SDK", async () => {
+    const bundledFn = bundled(parseClaudeVersion("2.1.90"));
+    const { logger } = recordingLogger();
+
+    await expect(
+      assertClaudeExecutableCompatible(
+        undefined,
+        logger,
+        {},
+        { readBundledClaudeVersion: bundledFn },
+      ),
+    ).rejects.toMatchObject({
+      name: "ClaudeRuntimeAdapterError",
+      adapterCode: "CLAUDE_VERSION_UNSUPPORTED",
+      category: "transport",
+    });
+  });
+
+  it("throws a bundled error that names the SDK dependency, not a global install", async () => {
+    const bundledFn = bundled(parseClaudeVersion("2.1.90"));
+    await expect(
+      assertClaudeExecutableCompatible(
+        undefined,
+        undefined,
+        {},
+        { readBundledClaudeVersion: bundledFn },
+      ),
+    ).rejects.toThrow(/bundled with @anthropic-ai\/claude-agent-sdk/);
+    await expect(
+      assertClaudeExecutableCompatible(
+        undefined,
+        undefined,
+        {},
+        { readBundledClaudeVersion: bundledFn },
+      ),
+    ).rejects.toThrow(/Upgrade @anthropic-ai\/claude-agent-sdk/);
+  });
+
+  it("probes the explicit path and does not read the bundled version", async () => {
+    const probeFn = probe(parseClaudeVersion("2.1.220"), "2.1.220");
+    const bundledFn = bundled(parseClaudeVersion("2.1.90"));
+    const { logger, calls } = recordingLogger();
+
+    await expect(
+      assertClaudeExecutableCompatible(
+        "/usr/local/bin/claude",
+        logger,
+        {},
+        { probeClaudeVersion: probeFn, readBundledClaudeVersion: bundledFn },
+      ),
+    ).resolves.toBeUndefined();
+    expect(probeFn).toHaveBeenCalledWith("/usr/local/bin/claude");
+    expect(bundledFn).not.toHaveBeenCalled();
+    expect((calls.debug[0] as unknown[])[0]).toMatchObject({
+      versionSource: "explicit",
+      claudeVersion: "2.1.220",
+    });
   });
 
   it("is a no-op when AIF_CLAUDE_SKIP_VERSION_CHECK=1", async () => {

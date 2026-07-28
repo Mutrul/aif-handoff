@@ -6,8 +6,7 @@ import { createClaudeRuntimeAdapter } from "../adapters/claude/index.js";
 import {
   CLAUDE_MIN_VERSION,
   isVersionBelowMin,
-  parseClaudeVersion,
-  probeClaudeVersion,
+  readBundledClaudeVersion,
 } from "../adapters/claude/version.js";
 import type { RuntimeRunInput } from "../types.js";
 import { TEST_USAGE_CONTEXT } from "./helpers/usageContext.js";
@@ -48,14 +47,16 @@ const silentLogger = {
 
 describe.skipIf(!ENABLED)("Claude runtime — default suppression settings (integration)", () => {
   it("starts and completes a run under the default empty-attribution settings", async () => {
-    // The effective Claude Code binary must be at/above the supported minimum,
-    // otherwise the version guard (exercised by adapter.run) rejects the run
-    // before it starts — which is itself the correct, non-opaque failure mode.
-    const probe = await probeClaudeVersion(undefined);
-    const version = probe.info ?? parseClaudeVersion(probe.raw ?? "");
+    // The Claude Code binary the Agent SDK actually launches (its bundled
+    // native binary, whose version is declared in the SDK manifest) must be
+    // at/above the supported minimum — otherwise the version guard exercised
+    // by adapter.run rejects the run before it starts, which is itself the
+    // correct, non-opaque failure mode. Reading the manifest (not probing a
+    // `claude` on PATH) keeps this pre-check aligned with what query() runs.
+    const version = readBundledClaudeVersion();
     expect(
       version && !isVersionBelowMin(version),
-      `Claude Code ${version?.raw ?? "unknown"} is below the supported minimum ${CLAUDE_MIN_VERSION}`,
+      `Bundled Claude Code ${version?.raw ?? "unknown"} is below the supported minimum ${CLAUDE_MIN_VERSION}`,
     ).toBe(true);
 
     const cwd = mkdtempSync(join(tmpdir(), "claude-attr-smoke-"));
