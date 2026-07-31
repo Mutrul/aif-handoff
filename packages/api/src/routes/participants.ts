@@ -60,6 +60,11 @@ function mutationError(result: Extract<ParticipantMutationResult, { ok: false }>
         status: 409 as const,
         body: { error: "Participant is inactive", code: result.code },
       };
+    case "invalid_current_password":
+      return {
+        status: 403 as const,
+        body: { error: "Current password is incorrect", code: result.code },
+      };
     case "invalid_input":
       return {
         status: 400 as const,

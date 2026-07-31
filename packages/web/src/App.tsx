@@ -52,9 +52,17 @@ interface AppContentProps {
   authSession: AuthSessionState;
   onLogout: () => Promise<unknown>;
   isLoggingOut: boolean;
+  onChangePassword: (input: { currentPassword: string; newPassword: string }) => Promise<unknown>;
+  isChangingPassword: boolean;
 }
 
-function AppContent({ authSession, onLogout, isLoggingOut }: AppContentProps) {
+function AppContent({
+  authSession,
+  onLogout,
+  isLoggingOut,
+  onChangePassword,
+  isChangingPassword,
+}: AppContentProps) {
   useWebSocket(true);
   useCommitToasts();
   const { theme, toggleTheme } = useTheme();
@@ -210,6 +218,8 @@ function AppContent({ authSession, onLogout, isLoggingOut }: AppContentProps) {
         onManageParticipants={() => setParticipantsOpen(true)}
         onLogout={onLogout}
         isLoggingOut={isLoggingOut}
+        onChangePassword={onChangePassword}
+        isChangingPassword={isChangingPassword}
       />
 
       <main className={`mx-auto w-full ${density === "compact" ? "p-4 md:p-5" : "p-6 md:p-8"}`}>
@@ -336,6 +346,8 @@ function AuthenticatedApp() {
       authSession={auth.session}
       onLogout={auth.logout}
       isLoggingOut={auth.isLoggingOut}
+      onChangePassword={auth.changePassword}
+      isChangingPassword={auth.isChangingPassword}
     />
   );
 }

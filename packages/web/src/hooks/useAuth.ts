@@ -69,6 +69,18 @@ export function useAuth() {
     },
   });
 
+  const changePasswordMutation = useMutation({
+    mutationFn: (input: { currentPassword: string; newPassword: string }) =>
+      api.changeParticipantPassword(input),
+    onSuccess: () => {
+      console.info("[FIX:participant-self-password] Password change completed", {
+        participantId:
+          queryClient.getQueryData<AuthSessionState>(AUTH_SESSION_QUERY_KEY)?.participant?.id ??
+          null,
+      });
+    },
+  });
+
   return {
     session: sessionQuery.data,
     isLoading: sessionQuery.isLoading,
@@ -81,5 +93,7 @@ export function useAuth() {
     resetLoginError: loginMutation.reset,
     logout: logoutMutation.mutateAsync,
     isLoggingOut: logoutMutation.isPending,
+    changePassword: changePasswordMutation.mutateAsync,
+    isChangingPassword: changePasswordMutation.isPending,
   };
 }

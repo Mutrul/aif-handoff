@@ -167,6 +167,7 @@ npm run participants:bootstrap
 
 The command prompts for the username, display name, and a hidden password with
 confirmation. Protected stdin and mode-`0600` password-file flags remain available for automation.
+After sign-in, every participant can change their own password from the identity menu.
 
 Human/AI ownership is independent from `autoMode`: ownership selects who is responsible
 for execution, while auto mode controls AI approval gates. See

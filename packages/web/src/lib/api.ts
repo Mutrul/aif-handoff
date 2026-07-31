@@ -437,6 +437,16 @@ export const api = {
     return response;
   },
 
+  changeParticipantPassword(input: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ ok: true; revokedSessionCount: number }> {
+    return request("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
   listParticipants(includeInactive = true): Promise<Participant[]> {
     return request<Participant[]>(
       `/participants?includeInactive=${includeInactive ? "true" : "false"}`,

@@ -54,6 +54,8 @@ interface Props {
   onManageParticipants?: () => void;
   onLogout?: () => Promise<unknown>;
   isLoggingOut?: boolean;
+  onChangePassword?: (input: { currentPassword: string; newPassword: string }) => Promise<unknown>;
+  isChangingPassword?: boolean;
 }
 
 export function Header({
@@ -75,6 +77,8 @@ export function Header({
   onManageParticipants = () => undefined,
   onLogout = async () => undefined,
   isLoggingOut = false,
+  onChangePassword = async () => undefined,
+  isChangingPassword = false,
 }: Props) {
   const { theme, toggleTheme } = useTheme();
   const headerRef = useRef<HTMLElement>(null);
@@ -314,6 +318,8 @@ export function Header({
               onManageParticipants={onManageParticipants}
               onLogout={onLogout}
               isLoggingOut={isLoggingOut}
+              onChangePassword={onChangePassword}
+              isChangingPassword={isChangingPassword}
             />
           )}
         </div>

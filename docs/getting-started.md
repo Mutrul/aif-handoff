@@ -222,6 +222,8 @@ the existing anonymous behavior and existing/new tasks default to AI ownership.
 
 4. Start or restart the stack and sign in at the web URL. Administrators can create,
    deactivate, rename, change roles, and reset passwords from the participant menu.
+   Every participant can replace a temporary password through their identity menu's
+   **Change password** action; the current password is required and other sessions are signed out.
 
 Flag-based bootstrap is idempotent only when the requested active admin already exists. Once any
 participant exists, the command refuses to create another account; use the authenticated

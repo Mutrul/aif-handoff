@@ -1,4 +1,4 @@
-import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, isNull, ne, sql } from "drizzle-orm";
 import {
   auditEvents,
   logger,
@@ -18,6 +18,7 @@ import { createAuditEventValues } from "./audit.js";
 import {
   hashParticipantPassword,
   normalizeParticipantUsername,
+  verifyParticipantPasswordOrDummy,
 } from "./authSessions.js";
 
 const log = logger("data:participants");
@@ -32,6 +33,7 @@ export type ParticipantRepositoryErrorCode =
   | "duplicate_username"
   | "final_active_admin"
   | "inactive_participant"
+  | "invalid_current_password"
   | "invalid_input";
 
 export type ParticipantMutationResult =
@@ -523,4 +525,98 @@ export async function resetParticipantPassword(
     log.error({ error, participantId }, "Participant password reset failed");
     throw error;
   }
+}
+
+export async function changeParticipantPassword(
+  participantId: string,
+  currentPassword: string,
+  newPassword: string,
+  currentSessionId: string,
+  actor: AuditActor = SYSTEM_ACTOR,
+): Promise<ParticipantMutationResult> {
+  if (!currentPassword || !newPassword || currentPassword === newPassword || !currentSessionId) {
+    log.warn({ participantId }, "[FIX:participant-self-password] Rejected invalid input");
+    return { ok: false, code: "invalid_input" };
+  }
+
+  const participant = getDb()
+    .select()
+    .from(participants)
+    .where(eq(participants.id, participantId))
+    .get();
+  const verified = await verifyParticipantPasswordOrDummy(
+    currentPassword,
+    participant?.passwordHash ?? null,
+  );
+  if (!participant) return { ok: false, code: "not_found" };
+  if (!participant.active) return { ok: false, code: "inactive_participant" };
+  if (!verified) {
+    log.warn(
+      { participantId },
+      "[FIX:participant-self-password] Rejected invalid current password",
+    );
+    return { ok: false, code: "invalid_current_password" };
+  }
+
+  const passwordHash = await hashParticipantPassword(newPassword);
+  const now = new Date().toISOString();
+  return getDb().transaction((tx) => {
+    const updated = tx
+      .update(participants)
+      .set({ passwordHash, updatedAt: now })
+      .where(
+        and(
+          eq(participants.id, participantId),
+          eq(participants.active, true),
+          eq(participants.passwordHash, participant.passwordHash),
+        ),
+      )
+      .returning()
+      .get();
+    if (!updated) {
+      const current = tx
+        .select({ active: participants.active })
+        .from(participants)
+        .where(eq(participants.id, participantId))
+        .get();
+      if (!current) return { ok: false, code: "not_found" } as const;
+      if (!current.active) return { ok: false, code: "inactive_participant" } as const;
+      return { ok: false, code: "invalid_current_password" } as const;
+    }
+
+    const revokedSessions = tx
+      .update(participantSessions)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(participantSessions.participantId, participantId),
+          ne(participantSessions.id, currentSessionId),
+          isNull(participantSessions.revokedAt),
+        ),
+      )
+      .run();
+    tx.insert(auditEvents)
+      .values(
+        createAuditEventValues({
+          action: "participant.password_changed",
+          entityType: "participant",
+          entityId: participantId,
+          participantId,
+          participantDisplayNameSnapshot: participant.displayName,
+          actor,
+          metadata: { revokedSessionCount: revokedSessions.changes },
+          createdAt: now,
+        }),
+      )
+      .run();
+    log.info(
+      { participantId, revokedSessionCount: revokedSessions.changes },
+      "[FIX:participant-self-password] Participant password changed",
+    );
+    return {
+      ok: true,
+      participant: toParticipant(updated),
+      revokedSessionCount: revokedSessions.changes,
+    } as const;
+  });
 }

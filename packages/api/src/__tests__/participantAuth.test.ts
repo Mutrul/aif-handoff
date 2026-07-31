@@ -190,6 +190,60 @@ describe("Participants Mode authentication", () => {
     expect(response.headers.get("set-cookie")).toContain("Secure");
   });
 
+  it("lets a member change their own password without ending the current session", async () => {
+    const { participant, session } = await createSession("member");
+    const otherSession = createParticipantSession(participant.id, { ttlMs: 60_000 });
+    expect(otherSession).not.toBeNull();
+    if (!otherSession) return;
+    const app = createApp();
+
+    const wrongPassword = await app.request("/auth/change-password", {
+      method: "POST",
+      headers: {
+        cookie: cookieHeader(session.token),
+        origin: ALLOWED_ORIGIN,
+        "content-type": "application/json",
+        "x-csrf-token": session.csrfToken,
+      },
+      body: JSON.stringify({
+        currentPassword: "wrong current password",
+        newPassword: "new secure password",
+      }),
+    });
+    expect(wrongPassword.status).toBe(403);
+    expect(await wrongPassword.json()).toMatchObject({ code: "invalid_current_password" });
+
+    const changed = await app.request("/auth/change-password", {
+      method: "POST",
+      headers: {
+        cookie: cookieHeader(session.token),
+        origin: ALLOWED_ORIGIN,
+        "content-type": "application/json",
+        "x-csrf-token": session.csrfToken,
+      },
+      body: JSON.stringify({
+        currentPassword: "correct horse battery staple",
+        newPassword: "new secure password",
+      }),
+    });
+    expect(changed.status).toBe(200);
+    expect(await changed.json()).toMatchObject({ ok: true, revokedSessionCount: 1 });
+    expect(
+      (
+        await app.request("/board", {
+          headers: { cookie: cookieHeader(session.token) },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request("/board", {
+          headers: { cookie: cookieHeader(otherSession.token) },
+        })
+      ).status,
+    ).toBe(401);
+  });
+
   it("uses the same response for unknown, inactive, and wrong-password credentials", async () => {
     const active = await createParticipant({
       username: "active",

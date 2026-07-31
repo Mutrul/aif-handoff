@@ -127,4 +127,27 @@ describe("api client", () => {
     expect(logged).toContain("/auth/login");
     debugSpy.mockRestore();
   });
+
+  it("changes a password with the authenticated CSRF token without logging secrets", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(jsonResponse(authenticatedSession));
+    await api.getAuthSession();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, revokedSessionCount: 1 }));
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+
+    await api.changeParticipantPassword({
+      currentPassword: "old secret password",
+      newPassword: "new secret password",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/auth/change-password");
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Headers).get("X-CSRF-Token")).toBe("csrf-old");
+    const logged = JSON.stringify(debugSpy.mock.calls);
+    expect(logged).not.toContain("old secret password");
+    expect(logged).not.toContain("new secret password");
+    debugSpy.mockRestore();
+  });
 });

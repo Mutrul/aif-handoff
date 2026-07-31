@@ -127,6 +127,7 @@ session response.
 ```text
 GET  /auth/session
 POST /auth/login
+POST /auth/change-password
 POST /auth/logout
 ```
 
@@ -152,8 +153,13 @@ opaque `HttpOnly; SameSite=Lax` session cookie, and returns:
 `expiresAt` set to `null` when unauthenticated. `POST /auth/logout` revokes the server
 session, clears the cookie, and emits `auth:session_revoked`.
 
+`POST /auth/change-password` requires an active member or admin session and accepts
+`{ "currentPassword": "...", "newPassword": "at-least-12-characters" }`. It keeps the
+current session active, revokes the participant's other sessions, and emits
+`participant:updated`. Credential attempts use the configured login rate-limit window.
+
 Authentication error codes include `invalid_credentials` (`401`),
-`authentication_required` (`401`), `invalid_csrf` (`403`), `origin_not_allowed` (`403`),
+`authentication_required` (`401`), `invalid_current_password` (`403`), `invalid_csrf` (`403`), `origin_not_allowed` (`403`),
 `rate_limited` (`429`, with `Retry-After`), `participants_mode_disabled` (`409`), and
 `auth_store_error` (`500`). Responses never include password hashes, raw session tokens,
 cookies, or provider credentials.
@@ -1486,7 +1492,7 @@ All events are JSON with this structure:
 | `project:runtime_limit_updated`   | `{ projectId, runtimeProfileId, taskId? }`                                                         | Persisted runtime-profile limit state or last usage changed                          |
 | `project:warmup_updated`          | `{ projectId, status }`                                                                            | Warmup create/delete/failure changed project warmup state                            |
 | `participant:created`             | `{ participant, actor }`                                                                           | Admin participant creation                                                           |
-| `participant:updated`             | `{ participant, actor }`                                                                           | Admin participant update/password reset                                              |
+| `participant:updated`             | `{ participant, actor }`                                                                           | Participant update, password change, or password reset                               |
 | `participant:deactivated`         | `{ participant, actor }`                                                                           | Admin participant deactivation                                                       |
 | `auth:session_revoked`            | `{ participantId }`                                                                                | Logout, deactivation, role change, or password reset                                 |
 

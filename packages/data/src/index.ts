@@ -119,6 +119,7 @@ export {
 } from "./authSessions.js";
 export {
   countParticipants,
+  changeParticipantPassword,
   createParticipant,
   deactivateParticipant,
   findParticipantById,

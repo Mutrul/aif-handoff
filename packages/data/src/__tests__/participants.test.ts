@@ -22,6 +22,7 @@ vi.mock("@aif/shared/server", async (importOriginal) => {
 const {
   appendAuditEvent,
   authenticateParticipant,
+  changeParticipantPassword,
   createParticipant,
   createParticipantSession,
   deactivateParticipant,
@@ -131,6 +132,65 @@ describe("participant administration", () => {
       sessionTtlMs: 60_000,
     });
     expect(authenticated.ok).toBe(true);
+  });
+
+  it("changes a participant password while preserving only the current session", async () => {
+    const created = await createParticipant({
+      username: "change-password-user",
+      displayName: "Change Password User",
+      password: "old secure password",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    const currentSession = createParticipantSession(created.participant.id, { ttlMs: 60_000 });
+    const otherSession = createParticipantSession(created.participant.id, { ttlMs: 60_000 });
+    expect(currentSession).not.toBeNull();
+    expect(otherSession).not.toBeNull();
+    if (!currentSession || !otherSession) return;
+
+    await expect(
+      changeParticipantPassword(
+        created.participant.id,
+        "wrong current password",
+        "new secure password",
+        currentSession.id,
+        {
+          kind: "participant",
+          id: created.participant.id,
+          displayNameSnapshot: created.participant.displayName,
+        },
+      ),
+    ).resolves.toEqual({ ok: false, code: "invalid_current_password" });
+    expect(resolveParticipantSession(currentSession.token)).not.toBeNull();
+
+    const result = await changeParticipantPassword(
+      created.participant.id,
+      "old secure password",
+      "new secure password",
+      currentSession.id,
+      {
+        kind: "participant",
+        id: created.participant.id,
+        displayNameSnapshot: created.participant.displayName,
+      },
+    );
+    expect(result).toMatchObject({ ok: true, revokedSessionCount: 1 });
+    expect(resolveParticipantSession(currentSession.token)).not.toBeNull();
+    expect(resolveParticipantSession(otherSession.token)).toBeNull();
+    await expect(
+      authenticateParticipant("change-password-user", "old secure password", {
+        sessionTtlMs: 60_000,
+      }),
+    ).resolves.toEqual({ ok: false, code: "invalid_credentials" });
+    await expect(
+      authenticateParticipant("change-password-user", "new secure password", {
+        sessionTtlMs: 60_000,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(
+      listAuditEvents({ participantId: created.participant.id }).map((event) => event.action),
+    ).toContain("participant.password_changed");
   });
 
   it("deactivates accounts, revokes sessions, removes assignments, and preserves history snapshots", async () => {

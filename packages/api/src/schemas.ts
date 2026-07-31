@@ -28,6 +28,16 @@ export const resetParticipantPasswordSchema = z.object({
   password: participantPasswordSchema,
 });
 
+export const changeParticipantPasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(10_000),
+    newPassword: participantPasswordSchema,
+  })
+  .refine((input) => input.currentPassword !== input.newPassword, {
+    message: "New password must differ from the current password",
+    path: ["newPassword"],
+  });
+
 export const listParticipantsQuerySchema = z.object({
   includeInactive: z
     .enum(["true", "false"])

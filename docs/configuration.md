@@ -132,6 +132,8 @@ Role policy:
 - `admin`: manage participants, assign/handoff any eligible task, and use configuration controls.
 - `member`: comment; self-assign an unassigned Human task; act on assigned Human tasks;
   hand an assigned Human task back to AI. Members cannot act on AI-owned tasks.
+- Every active participant can change their own password after confirming the current
+  password. The current session stays active and all other sessions are revoked.
 - The final active admin cannot be demoted or deactivated. Deactivation and password
   reset revoke that participant's active sessions immediately.
 
