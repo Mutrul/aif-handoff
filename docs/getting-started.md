@@ -186,6 +186,49 @@ You can set planner/plan-checker/implementer/review budgets per project in the p
 
 See [Configuration](configuration.md) for details.
 
+## Participants Mode
+
+Participants Mode is off by default. With the flag unset or `false`, the UI and API keep
+the existing anonymous behavior and existing/new tasks default to AI ownership.
+
+1. Add the following to `.env` (the origin must match the browser origin exactly):
+
+   ```dotenv
+   PARTICIPANTS_MODE_ENABLED=true
+   PARTICIPANT_ALLOWED_ORIGINS=http://localhost:5180
+   ```
+
+2. Create a password file outside the repository, restrict it to the current user, and
+   bootstrap the first administrator before sharing the UI:
+
+   ```bash
+   chmod 600 /secure/path/admin-password
+   npm run participants:bootstrap -- --username admin --display-name "Workspace Admin" --password-file /secure/path/admin-password
+   ```
+
+   Passwords must contain at least 12 characters. `--password` and password values on the
+   command line are rejected so they cannot leak through shell history or process listings.
+
+3. For Docker, feed the protected host file through stdin to the API container:
+
+   ```bash
+   docker compose exec -T api npm run participants:bootstrap -- --username admin --display-name "Workspace Admin" --password-stdin < /secure/path/admin-password
+   ```
+
+4. Start or restart the stack and sign in at the web URL. Administrators can create,
+   deactivate, rename, change roles, and reset passwords from the participant menu.
+
+Bootstrap is idempotent only when the requested active admin already exists. Once any
+participant exists, the command refuses to create another account; use the authenticated
+admin UI/API instead. The final active administrator cannot be deactivated or demoted.
+If every administrator credential is lost, restore a database backup; bootstrap is not a
+break-glass password reset.
+
+Human/AI ownership is separate from `autoMode`. Human-owned tasks never enter coordinator,
+scheduler, auto-queue, watchdog, or runtime-budget execution paths. A handoff is rejected
+while an AI lease is live, but ownership is not filesystem isolation: wait for in-flight
+work to finish and inspect the shared project/worktree before editing it manually.
+
 ## Running
 
 Start all services with hot reload:

@@ -4,7 +4,7 @@
 
 ## Overview
 
-AIF Handoff is a Turborepo monorepo with six packages. The system automates task management: a React Kanban UI lets users create tasks, the API and agent operate through a centralized data layer backed by SQLite, and runtime execution goes through `@aif/runtime` so orchestration is provider-neutral.
+AIF Handoff is a Turborepo monorepo with seven packages. The system automates task management: a React Kanban UI lets users create tasks, the API and agent operate through a centralized data layer backed by SQLite, and runtime execution goes through `@aif/runtime` so orchestration is provider-neutral.
 
 ```
 ┌─────────────┐     HTTP/WS      ┌─────────────┐
@@ -44,6 +44,7 @@ AIF Handoff is a Turborepo monorepo with six packages. The system automates task
 | `packages/api`     | `@aif/api`     | Hono REST + WebSocket server (port 3009)                      |
 | `packages/web`     | `@aif/web`     | React Kanban UI (port 5180)                                   |
 | `packages/agent`   | `@aif/agent`   | Coordinator + runtime-driven subagent orchestration           |
+| `packages/mcp`     | `@aif/mcp`     | MCP task read/write tools and HTTP/stdio transports           |
 
 ### Dependency Graph
 
@@ -55,6 +56,7 @@ runtime ← agent
 shared ← web (browser export only)
 data   ← api
 data   ← agent
+data   ← mcp
 ```
 
 No cross-dependencies between `api`, `web`, and `agent`. Runtime integration is:
@@ -186,6 +188,54 @@ Auto-review strategy is controlled globally by `AGENT_AUTO_REVIEW_STRATEGY`:
 Tasks also have a `skipReview` flag (default `false`). When `true`, the coordinator bypasses the review stage entirely — after successful implementation the task moves directly to `done`, skipping the `review-sidecar` and `security-sidecar` runs. This is useful for small changes or tasks where code review is unnecessary.
 
 Skills-mode tasks (`useSubagents=false`) also have two opt-in flags. `runPlanImprove` inserts `/aif-improve` after the initial plan and before `plan_ready`. This is plan refinement: it may replace the stored plan only when the improver returns a complete plan-shaped update. `runPostVerify` inserts `/aif-verify` after implementation and before review. This is an execution validation gate: it stores verification output, passes through to review/done on pass or warn, and moves to `blocked_external` for a blocking gate result. Both flags default to `false` and are ignored for subagent tasks.
+
+### Participants, Ownership, and Manual Execution
+
+Participants Mode is an off-by-default policy layer around the existing state machine.
+The browser authenticates with an opaque local session cookie and session-derived CSRF
+token; the API attaches an immutable actor context and computes task permissions from the
+same resolver used to apply transitions. WebSocket upgrades use the same session and exact
+origin policy. HTTP MCP uses a separate bearer token and cannot mutate ownership.
+
+```text
+browser cookie + Origin + CSRF
+              │
+              ▼
+API auth/RBAC ──► @aif/data atomic mutation ──► audit + executor history
+              │                                  │
+              └──────── safe WS snapshots ◄──────┘
+```
+
+Every task has `executionOwner`, `ownershipRevision`, and zero or more assignment rows.
+`autoMode` remains a separate approval-gate setting. AI-owned tasks follow the legacy
+pipeline. Human-owned tasks are excluded at the shared data-query boundary from
+coordinator claims, scheduled execution, auto-queue, watchdog recovery, permit waiting,
+and runtime-budget consumption.
+
+| Human-owned status    | Assigned participant actions                                            |
+| --------------------- | ----------------------------------------------------------------------- |
+| `backlog`             | `start_human_work` → `planning`                                         |
+| `planning`, `improve` | `mark_plan_ready` → `plan_ready`                                        |
+| `plan_ready`          | `start_implementation` → `implementing`                                 |
+| `implementing`        | `submit_implementation` → `verify`, `review`, or `done` from task flags |
+| `review`              | `complete_review`, `request_review_changes`                             |
+| `verify`              | `pass_verification`, `fail_verification`                                |
+| `blocked_external`    | `retry_from_blocked`                                                    |
+| `done`                | `approve_done`, `request_changes`                                       |
+| `verified`            | terminal; no handoff or action                                          |
+
+Handoffs replace owner and assignments in one SQLite transaction. The request must match
+the expected ownership revision and may also assert the previous owner/status. A live AI
+lease, stale revision, inactive assignee, or invalid resume transition returns a structured
+conflict without partial writes. Human → AI at manual `plan_ready` requires
+`start_implementation`; at `blocked_external` it requires `retry_from_blocked`.
+Executor-history and audit rows snapshot titles, statuses, actors, assignee names/roles,
+and active flags so later account edits do not rewrite history.
+
+Ownership is execution policy, not filesystem isolation. A handoff waits for live leases,
+but operators must still avoid simultaneous edits to the same project root/worktree.
+
+### Skills-mode Flag Interactions
 
 Flag interaction table:
 

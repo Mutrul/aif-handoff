@@ -1,10 +1,21 @@
 import { Button } from "@/components/ui/button";
 import { FilterButton } from "@/components/ui/filter-button";
 
-type QuickFilter = "mine" | "blocked" | "recent" | "no_plan" | "roadmap";
+type QuickFilter =
+  | "mine"
+  | "human_owned"
+  | "ai_owned"
+  | "unassigned"
+  | "blocked"
+  | "recent"
+  | "no_plan"
+  | "roadmap";
 
 const FILTER_LABELS: Record<QuickFilter, string> = {
   mine: "mine",
+  human_owned: "human-owned",
+  ai_owned: "AI-owned",
+  unassigned: "unassigned",
   blocked: "blocked",
   recent: "recent",
   no_plan: "no plan",

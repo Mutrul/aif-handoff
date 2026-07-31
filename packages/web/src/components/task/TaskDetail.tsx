@@ -21,6 +21,8 @@ import { useTaskDetailActions } from "./useTaskDetailActions";
 import { AlertBox } from "@/components/ui/alert-box";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
+import { HandoffDialog } from "./TaskOwnership";
+import { ExecutorTimeline } from "./ExecutorTimeline";
 
 interface TaskDetailProps {
   taskId: string | null;
@@ -30,6 +32,7 @@ interface TaskDetailProps {
 export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const { data: task } = useTask(taskId);
   const [selectedTab, setSelectedTab] = useState<TaskDetailTab | null>(null);
+  const [showHandoffDialog, setShowHandoffDialog] = useState(false);
   const actions = useTaskDetailActions(task, onClose);
   const runQaMutation = useRunQa(taskId ?? "");
   const qaPipelineEnabled = useQaPipelineEnabled();
@@ -59,6 +62,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 isDisabled={actions.isSubmittingPlanChange}
                 isCheckingStartAi={actions.isCheckingStartAiPlanFile}
                 planChangeSuccess={actions.planChangeSuccess}
+                onOpenHandoff={() => setShowHandoffDialog(true)}
                 onClose={onClose}
               />
 
@@ -152,6 +156,11 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   {activeTab === "comments" && (
                     <Section title="Comments">
                       <TaskComments taskId={task.id} />
+                    </Section>
+                  )}
+                  {activeTab === "executors" && (
+                    <Section title="Executor history">
+                      <ExecutorTimeline taskId={task.id} />
                     </Section>
                   )}
                   {qaPipelineEnabled && activeTab === "qa" && (
@@ -350,6 +359,14 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         onSubmit={actions.handlePlanChangeRequest}
         onCancel={actions.resetReplanModal}
       />
+      {task && (
+        <HandoffDialog
+          key={`${task.id}:${task.ownershipRevision}:${showHandoffDialog}`}
+          task={task}
+          open={showHandoffDialog}
+          onOpenChange={setShowHandoffDialog}
+        />
+      )}
     </>
   );
 }

@@ -21,9 +21,13 @@ export async function broadcastTaskChange(
   const url = `${baseUrl}/tasks/${taskId}/broadcast`;
 
   try {
+    const internalToken = getEnv().INTERNAL_BROADCAST_TOKEN?.trim();
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(internalToken ? { "X-Internal-Broadcast-Token": internalToken } : {}),
+      },
       body: JSON.stringify({ type }),
     });
 

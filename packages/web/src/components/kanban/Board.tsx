@@ -15,6 +15,7 @@ import { readStorage, writeStorage } from "@/lib/storage";
 import { STORAGE_KEYS } from "@/lib/storageKeys";
 import { FilterBar, type QuickFilter } from "./FilterBar";
 import { TaskListTable } from "./TaskListTable";
+import { useAuth } from "@/hooks/useAuth";
 
 type ViewMode = "kanban" | "list";
 type ListSort = "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc" | "status";
@@ -59,6 +60,8 @@ function compareTerminalTasks(a: TaskListItem, b: TaskListItem): number {
 
 export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: BoardProps) {
   const { data: tasks, isLoading } = useTasks(projectId);
+  const { session } = useAuth();
+  const currentParticipantId = session?.participant?.id ?? null;
   const isCompact = density === "compact";
   const [activeFilters, setActiveFilters] = useState<QuickFilter[]>([]);
   const [activeRoadmapAliases, setActiveRoadmapAliases] = useState<string[]>([]);
@@ -114,7 +117,19 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
     const all = tasks ?? [];
 
     return all.filter((task) => {
-      if (activeFilters.includes("mine") && task.autoMode) return false;
+      if (
+        activeFilters.includes("mine") &&
+        (!currentParticipantId ||
+          !task.assignees.some((assignee) => assignee.participantId === currentParticipantId))
+      )
+        return false;
+      if (activeFilters.includes("human_owned") && task.executionOwner !== "human") return false;
+      if (activeFilters.includes("ai_owned") && task.executionOwner !== "ai") return false;
+      if (
+        activeFilters.includes("unassigned") &&
+        (task.executionOwner !== "human" || task.assignees.length > 0)
+      )
+        return false;
       if (activeFilters.includes("blocked") && task.status !== "blocked_external") return false;
       if (activeFilters.includes("recent")) {
         const updatedTs = new Date(task.updatedAt).getTime();
@@ -132,7 +147,7 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
       }
       return true;
     });
-  }, [activeFilters, activeRoadmapAliases, tasks]);
+  }, [activeFilters, activeRoadmapAliases, currentParticipantId, tasks]);
 
   const tasksByStatus = useMemo(() => {
     const grouped: Record<TaskStatus, TaskListItem[]> = {

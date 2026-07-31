@@ -43,6 +43,7 @@ const getAppDefaultRuntimeProfileIdMock = vi.fn<
 interface MockTaskRow {
   id: string;
   projectId: string;
+  executionOwner?: "ai" | "human";
   status?: string;
   runtimeOptionsJson: string | null;
   modelOverride: string | null;
@@ -333,6 +334,28 @@ describe("executeSubagentQuery attribution", () => {
     expect(callOptions.settings).toEqual(
       expect.objectContaining({ attribution: { commit: "", pr: "" } }),
     );
+  });
+
+  it("rejects a human-owned task before runtime resolution or usage", async () => {
+    findTaskByIdMock.mockReturnValue({
+      id: "task-human",
+      projectId: "project-1",
+      executionOwner: "human",
+      runtimeOptionsJson: null,
+      modelOverride: null,
+    });
+
+    await expect(
+      executeSubagentQuery({
+        taskId: "task-human",
+        projectRoot: "/tmp/project",
+        agentName: "implement-coordinator",
+        prompt: "run",
+        workflowKind: "implementer",
+      }),
+    ).rejects.toMatchObject({ code: "ai_handoff_required" });
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(resolveEffectiveRuntimeProfileMock).not.toHaveBeenCalled();
   });
 
   it("passes Handoff branch contract in runtime environment", async () => {

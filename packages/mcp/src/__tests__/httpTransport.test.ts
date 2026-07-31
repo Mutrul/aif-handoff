@@ -40,6 +40,8 @@ const env = {
   rateLimitWriteBurst: 5,
   // Exercise the opt-in stateless multi-session path in the main suite.
   httpMultiSession: true,
+  participantsModeEnabled: false,
+  authToken: null,
 };
 
 /** POST an arbitrary JSON-RPC message with the headers the SDK requires (else 406). */
@@ -177,6 +179,81 @@ describe("MCP HTTP transport — multi-session (opt-in)", () => {
       expect(context.rateLimiter.check("listTasks", "read")).toBe(true);
     }
     expect(context.rateLimiter.check("listTasks", "read")).toBe(false);
+  });
+});
+
+describe("MCP HTTP transport — Participants Mode bearer auth", () => {
+  const protectedEnv = {
+    ...env,
+    participantsModeEnabled: true,
+    authToken: "dedicated-mcp-token",
+  };
+  let server: Server;
+  let port: number;
+
+  beforeAll(async () => {
+    const context = createToolContext(protectedEnv);
+    server = createServer(createMcpHttpHandler(protectedEnv, context));
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    port = (server.address() as AddressInfo).port;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("keeps health public but rejects missing and invalid MCP bearer tokens", async () => {
+    expect((await fetch(`http://localhost:${port}/health`)).status).toBe(200);
+
+    const missing = await initialize(port);
+    expect(missing.status).toBe(401);
+    expect(await missing.json()).toMatchObject({
+      code: "mcp_authentication_required",
+    });
+    expect(missing.headers.get("www-authenticate")).toBe("Bearer");
+
+    const invalid = await fetch(`http://localhost:${port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: "Bearer wrong-token",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "test-client", version: "0.0.0" },
+        },
+      }),
+    });
+    expect(invalid.status).toBe(401);
+  });
+
+  it("accepts the exact dedicated MCP bearer token", async () => {
+    const response = await fetch(`http://localhost:${port}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: "Bearer dedicated-mcp-token",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "test-client", version: "0.0.0" },
+        },
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect((await readJsonRpc(response))?.result).toBeDefined();
   });
 });
 

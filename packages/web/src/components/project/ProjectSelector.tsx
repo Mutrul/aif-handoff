@@ -42,11 +42,12 @@ interface Props {
   selectedId: string | null;
   onSelect: (project: Project) => void;
   onDeselect: () => void;
+  canManage?: boolean;
 }
 
 type DialogMode = "create" | "edit";
 
-export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
+export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = true }: Props) {
   const { data: projects } = useProjects();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
@@ -158,6 +159,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
   const mcpServers = mcpData?.mcpServers ? Object.keys(mcpData.mcpServers) : [];
 
   const openCreate = () => {
+    if (!canManage) return;
     setDialogMode("create");
     setEditingId(null);
     setName("");
@@ -177,6 +179,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
 
   const openEdit = (p: Project, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canManage) return;
     setDialogMode("edit");
     setEditingId(p.id);
     setName(p.name);
@@ -202,6 +205,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
 
   const handleDelete = (p: Project, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canManage) return;
     if (!confirm(`Delete project "${p.name}"?`)) return;
     deleteProject.mutate(p.id, {
       onSuccess: () => {
@@ -212,6 +216,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
 
   const handlePin = (project: Project, event: React.MouseEvent) => {
     event.stopPropagation();
+    if (!canManage) return;
     updateOrganization.mutate(
       { id: project.id, input: { pinned: project.pinnedAt == null } },
       {
@@ -498,38 +503,42 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                               {project.rootPath}
                             </div>
                           </ListButton>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className={`h-6 w-6 border-0 hover:!opacity-100 ${
-                              project.pinnedAt
-                                ? "opacity-70"
-                                : "opacity-0 group-hover:opacity-70 group-focus-within:opacity-70"
-                            }`}
-                            onClick={(event) => handlePin(project, event)}
-                            title={project.pinnedAt ? "Unpin" : "Pin"}
-                            aria-pressed={project.pinnedAt != null}
-                          >
-                            <Pin className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 border-0 opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 hover:!opacity-100"
-                            onClick={(event) => openEdit(project, event)}
-                            title="Edit"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 border-0 text-destructive opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 hover:!opacity-100"
-                            onClick={(event) => handleDelete(project, event)}
-                            title="Delete"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          {canManage && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-6 w-6 border-0 hover:!opacity-100 ${
+                                  project.pinnedAt
+                                    ? "opacity-70"
+                                    : "opacity-0 group-hover:opacity-70 group-focus-within:opacity-70"
+                                }`}
+                                onClick={(event) => handlePin(project, event)}
+                                title={project.pinnedAt ? "Unpin" : "Pin"}
+                                aria-pressed={project.pinnedAt != null}
+                              >
+                                <Pin className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 border-0 opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 hover:!opacity-100"
+                                onClick={(event) => openEdit(project, event)}
+                                title="Edit"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 border-0 text-destructive opacity-0 group-hover:opacity-70 group-focus-within:opacity-70 hover:!opacity-100"
+                                onClick={(event) => handleDelete(project, event)}
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -544,12 +553,14 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
               </div>
             </ScrollableContainer>
 
-            <div className="mt-1 border-t border-border pt-1">
-              <ListButton onClick={openCreate} className="gap-2 px-3 py-2">
-                <Plus className="h-3 w-3" />
-                New project
-              </ListButton>
-            </div>
+            {canManage && (
+              <div className="mt-1 border-t border-border pt-1">
+                <ListButton onClick={openCreate} className="gap-2 px-3 py-2">
+                  <Plus className="h-3 w-3" />
+                  New project
+                </ListButton>
+              </div>
+            )}
           </div>
         )}
       </div>

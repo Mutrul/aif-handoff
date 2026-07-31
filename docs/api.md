@@ -113,6 +113,74 @@ Rules:
 - `plan` / `review` fall back to the app task default when unset
 - invalid scope combinations fail with `400` and `fieldErrors`
 
+## Participant Authentication and Administration
+
+These contracts are active only when `PARTICIPANTS_MODE_ENABLED=true`. When disabled,
+legacy anonymous access remains available and `GET /auth/session` reports
+`participantsModeEnabled: false`. When enabled, only `GET /health`, `GET /auth/session`,
+`POST /auth/login`, and CORS preflight are public. Browser requests use credentials;
+unsafe methods also require an exact allowed `Origin` and `X-CSRF-Token` from the current
+session response.
+
+### Session and Login
+
+```text
+GET  /auth/session
+POST /auth/login
+POST /auth/logout
+```
+
+`POST /auth/login` accepts `{ "username": "admin", "password": "..." }`, sets an
+opaque `HttpOnly; SameSite=Lax` session cookie, and returns:
+
+```json
+{
+  "participantsModeEnabled": true,
+  "authenticated": true,
+  "participant": {
+    "id": "uuid",
+    "displayName": "Workspace Admin",
+    "role": "admin",
+    "active": true
+  },
+  "csrfToken": "session-bound-token",
+  "expiresAt": "2026-08-07T12:00:00.000Z"
+}
+```
+
+`GET /auth/session` returns the same shape, with `participant`, `csrfToken`, and
+`expiresAt` set to `null` when unauthenticated. `POST /auth/logout` revokes the server
+session, clears the cookie, and emits `auth:session_revoked`.
+
+Authentication error codes include `invalid_credentials` (`401`),
+`authentication_required` (`401`), `invalid_csrf` (`403`), `origin_not_allowed` (`403`),
+`rate_limited` (`429`, with `Retry-After`), `participants_mode_disabled` (`409`), and
+`auth_store_error` (`500`). Responses never include password hashes, raw session tokens,
+cookies, or provider credentials.
+
+### Participant Administration
+
+All participant endpoints require an active admin session:
+
+```text
+GET   /participants?includeInactive=false
+POST  /participants
+PATCH /participants/:id
+POST  /participants/:id/deactivate
+POST  /participants/:id/reset-password
+```
+
+- Create body: `username`, `displayName`, `password` (minimum 12 characters), and optional
+  `role` (`member` by default).
+- Update body: at least one of `displayName` or `role`.
+- Reset body: `{ "password": "at-least-12-characters" }`.
+- Deactivation and password reset revoke the target participant's sessions. The final
+  active admin cannot be deactivated or demoted.
+
+Administration error codes are `forbidden`, `not_found`, `duplicate_username`,
+`final_active_admin`, `inactive_participant`, `invalid_input`, and
+`participant_store_error`.
+
 ## Projects
 
 ### List Projects
@@ -696,6 +764,9 @@ moves to `GET /projects/overview`.
     "priority": 0,
     "position": 1100,
     "autoMode": true,
+    "executionOwner": "ai",
+    "ownershipRevision": 0,
+    "assignees": [],
     "isFix": false,
     "paused": false,
     "hasPlan": false,
@@ -734,9 +805,11 @@ POST /tasks
 | `projectId` | string | yes | | Project UUID |
 | `title` | string | yes | | Task title (1-500 chars) |
 | `description` | string | no | `""` | Task description |
-| `attachments` | array | no | `[]` | File attachments (max 10) |
+| `attachments` | array | no | `[]` | File attachments (max 100) |
 | `priority` | integer | no | `0` | Priority level (0-5) |
 | `autoMode` | boolean | no | `true` | Auto-advance through agent pipeline, including automatic post-review rework loop when fixes are detected |
+| `executionOwner` | `ai` \| `human` | no | `ai` | Responsible executor; independent from `autoMode` |
+| `assigneeIds` | string[] | no | `[]` | Active participant IDs for Human ownership (max 100); must be empty for AI ownership |
 | `isFix` | boolean | no | `false` | Marks the task as fix-flow task (uses FIX plan conventions) |
 | `skipReview` | boolean | no | `false` | Skip the review stage — task moves directly from implementing to done |
 | `paused` | boolean | no | `false` | Pause agent processing — coordinator skips this task until resumed |
@@ -780,17 +853,62 @@ runtime options, auto-review state, and QA detail text when present.
 
 Notable task fields in the response:
 
-| Field                   | Type         | Description                                                                                                      |
-| ----------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `manualReviewRequired`  | boolean      | `true` when auto-review stopped and explicit human review is required while the task remains in `done`           |
-| `autoReviewState`       | object\|null | Latest persisted blocking-findings snapshot used by the auto-review loop (`strategy`, `iteration`, `findings[]`) |
-| `runtimeLimitSnapshot`  | object\|null | Persisted runtime-limit snapshot copied onto the task when quota gating or quota failure blocks execution        |
-| `runtimeLimitUpdatedAt` | string\|null | ISO timestamp for the last task-level runtime-limit snapshot write                                               |
-| `autoQa`                | boolean      | When `true`, the QA pipeline runs automatically once the task is approved (`approve_done`)                       |
-| `qaStatus`              | string       | QA run lifecycle: `idle`, `running`, `done`, or `error`                                                          |
-| `qaChangeSummary`       | string\|null | Markdown change-summary artifact from the latest QA run (`null` until generated)                                 |
-| `qaTestPlan`            | string\|null | Markdown test-plan artifact from the latest QA run (`null` until generated)                                      |
-| `qaTestCases`           | string\|null | Markdown test-cases artifact from the latest QA run (`null` until generated)                                     |
+| Field                   | Type          | Description                                                                                                      |
+| ----------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `manualReviewRequired`  | boolean       | `true` when auto-review stopped and explicit human review is required while the task remains in `done`           |
+| `autoReviewState`       | object\|null  | Latest persisted blocking-findings snapshot used by the auto-review loop (`strategy`, `iteration`, `findings[]`) |
+| `runtimeLimitSnapshot`  | object\|null  | Persisted runtime-limit snapshot copied onto the task when quota gating or quota failure blocks execution        |
+| `runtimeLimitUpdatedAt` | string\|null  | ISO timestamp for the last task-level runtime-limit snapshot write                                               |
+| `autoQa`                | boolean       | When `true`, the QA pipeline runs automatically once the task is approved (`approve_done`)                       |
+| `qaStatus`              | string        | QA run lifecycle: `idle`, `running`, `done`, or `error`                                                          |
+| `qaChangeSummary`       | string\|null  | Markdown change-summary artifact from the latest QA run (`null` until generated)                                 |
+| `qaTestPlan`            | string\|null  | Markdown test-plan artifact from the latest QA run (`null` until generated)                                      |
+| `qaTestCases`           | string\|null  | Markdown test-cases artifact from the latest QA run (`null` until generated)                                     |
+| `executionOwner`        | `ai`\|`human` | Executor responsible for the task; independent from `autoMode`                                                   |
+| `ownershipRevision`     | integer       | Monotonic optimistic-concurrency revision for assignments/handoffs                                               |
+| `assignees`             | array         | Immutable participant summaries for current Human assignees                                                      |
+| `permissions`           | object        | Server-derived `canAssign`, `canHandoff`, `canSelfAssign`, `canAct`, `canComment`, and `permittedActions`        |
+
+### Handoff Task Ownership
+
+```text
+POST /tasks/:id/handoff
+```
+
+```json
+{
+  "executionOwner": "human",
+  "assigneeIds": ["participant-uuid"],
+  "expectedOwnershipRevision": 2,
+  "expectedExecutionOwner": "ai",
+  "expectedStatus": "implementing",
+  "reason": "Optional audit reason"
+}
+```
+
+The response contains `{ task, ownership, history }`. AI ownership requires an empty
+`assigneeIds` array. Human ownership may be unassigned or have multiple active assignees.
+Administrators may assign/handoff; a member may self-assign an unassigned Human task or
+hand an assigned Human task back to AI. For Human → AI at manual `plan_ready`, include
+`resumeAction: "start_implementation"`; for `blocked_external`, include
+`resumeAction: "retry_from_blocked"` and the task must have `blockedFromStatus`.
+`verified` is terminal and cannot be handed off.
+
+Conflicts return `409` with `task_locked`, `ownership_revision_conflict`,
+`inactive_assignee`, or `invalid_ownership_transition`. Authorization returns `403`
+with `forbidden`; missing tasks return `404` with `task_not_found`. A successful handoff
+emits `task:handoff` and `task:assignment_updated`.
+
+### Executor History
+
+```text
+GET /tasks/:id/executor-history
+```
+
+Returns executor snapshots ordered by `ownershipRevision`, then creation time and ID.
+Each immutable row records task title/status, owner, assignee display-name/role/active
+snapshots, actor, optional reason, and timestamp. It is not derived from mutable activity
+logs.
 
 ### Download Task Attachment
 
@@ -894,6 +1012,20 @@ Transitions a task through the state machine.
 | `blocked_external` | `retry_from_blocked`                                     |
 | `done`             | `approve_done`, `request_changes`                        |
 
+With Participants Mode enabled, the server returns the authoritative action subset in
+`task.permissions.permittedActions`. An assigned Human-owned task also supports:
+
+| Current status        | Human-owned events                          |
+| --------------------- | ------------------------------------------- |
+| `backlog`             | `start_human_work`                          |
+| `planning`, `improve` | `mark_plan_ready`                           |
+| `plan_ready`          | `start_implementation`                      |
+| `implementing`        | `submit_implementation`                     |
+| `review`              | `complete_review`, `request_review_changes` |
+| `verify`              | `pass_verification`, `fail_verification`    |
+| `blocked_external`    | `retry_from_blocked`                        |
+| `done`                | `approve_done`, `request_changes`           |
+
 Additional constraints:
 
 - `start_implementation` requires `autoMode=false` (manual gate). For `autoMode=true`, implementation is picked automatically by the coordinator.
@@ -905,7 +1037,9 @@ Additional constraints:
 
 **Response:** `200 OK` — the updated task object.
 
-**Error:** `409 Conflict` if the event is not valid for the current status.
+**Errors:** `403` for `actor_not_authorized` or `assignment_required`; `409` for
+`action_not_allowed`, `ai_handoff_required`, `blocked_status_missing`, or another
+state-machine conflict.
 
 **WebSocket event:** `task:moved`
 
@@ -1002,6 +1136,13 @@ GET /tasks/:id/comments
     "id": "uuid",
     "taskId": "uuid",
     "author": "human",
+    "participantId": "participant-uuid",
+    "participant": {
+      "id": "participant-uuid",
+      "displayName": "Ada",
+      "role": "member",
+      "active": true
+    },
     "message": "Comment text",
     "attachments": [],
     "createdAt": "2026-01-01T00:00:00.000Z"
@@ -1019,7 +1160,7 @@ POST /tasks/:id/comments
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `message` | string | yes | Comment text (1-20,000 chars) |
-| `attachments` | array | no | File attachments (max 10) |
+| `attachments` | array | no | File attachments (max 100) |
 
 **Response:** `201 Created` — the created comment object.
 
@@ -1326,6 +1467,9 @@ All events are JSON with this structure:
 | `task:updated`                    | Full task object                                                                                   | `PUT /tasks/:id`, `PATCH /tasks/:id/position`, `POST /tasks/:id/events` (`fast_fix`) |
 | `task:moved`                      | Full task object                                                                                   | `POST /tasks/:id/events`                                                             |
 | `task:deleted`                    | `{ id: string }`                                                                                   | `DELETE /tasks/:id`                                                                  |
+| `task:handoff`                    | `{ taskId, projectId, ownership, actor, responsibleParticipants }`                                 | Successful `POST /tasks/:id/handoff`                                                 |
+| `task:assignment_updated`         | Same ownership payload as `task:handoff`                                                           | Successful ownership/assignment replacement                                          |
+| `task:comment_created`            | Comment payload with participant summary when authored by a participant                            | `POST /tasks/:id/comments`                                                           |
 | `task:qa_started`                 | `{ taskId, projectId, status: "started" }`                                                         | `POST /tasks/:id/run-qa`, or `approve_done` with `autoQa=true`                       |
 | `task:qa_done`                    | `{ taskId, projectId, status: "done" }`                                                            | QA pipeline finished successfully                                                    |
 | `task:qa_failed`                  | `{ taskId, projectId, status: "failed", error? }`                                                  | QA pipeline failed (runner returned `{ ok: false }`)                                 |
@@ -1341,10 +1485,20 @@ All events are JSON with this structure:
 | `project:auto_queue_advanced`     | `{ id: string }` (task id)                                                                         | Coordinator auto-advances the next backlog task in an auto-queue project             |
 | `project:runtime_limit_updated`   | `{ projectId, runtimeProfileId, taskId? }`                                                         | Persisted runtime-profile limit state or last usage changed                          |
 | `project:warmup_updated`          | `{ projectId, status }`                                                                            | Warmup create/delete/failure changed project warmup state                            |
+| `participant:created`             | `{ participant, actor }`                                                                           | Admin participant creation                                                           |
+| `participant:updated`             | `{ participant, actor }`                                                                           | Admin participant update/password reset                                              |
+| `participant:deactivated`         | `{ participant, actor }`                                                                           | Admin participant deactivation                                                       |
+| `auth:session_revoked`            | `{ participantId }`                                                                                | Logout, deactivation, role change, or password reset                                 |
 
 ### Connection
 
-The WebSocket endpoint is a broadcast channel with no topic subscriptions; connected clients receive all events. Keep this endpoint behind trusted network boundaries and do not include raw provider diagnostics or secrets in event payloads.
+The WebSocket endpoint is a broadcast channel with no topic subscriptions. With
+Participants Mode disabled, it keeps the legacy anonymous behavior. With Participants
+Mode enabled, the upgrade must include the valid participant session cookie and an exact
+allowed `Origin`; missing, expired, inactive, or disallowed sessions are rejected before
+the connection is accepted. Revocation events make matching browser clients clear their
+session and return to login. Event payloads contain IDs and safe snapshots, never raw
+cookies, CSRF values, bearer tokens, passwords/hashes, or provider credentials.
 
 Runtime-limit invalidation is project-scoped:
 

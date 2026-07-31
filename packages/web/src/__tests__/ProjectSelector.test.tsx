@@ -182,6 +182,25 @@ describe("ProjectSelector", () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "p-1" }));
   });
 
+  it("hides project configuration actions from members", () => {
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+
+    render(
+      <ProjectSelector
+        selectedId="p-1"
+        onSelect={() => {}}
+        onDeselect={() => {}}
+        canManage={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+
+    expect(screen.queryByText("New project")).toBeNull();
+    expect(screen.queryByTitle("Edit")).toBeNull();
+    expect(screen.queryByTitle("Delete")).toBeNull();
+    expect(screen.queryByTitle("Pin")).toBeNull();
+  });
+
   it("uses collision-free section keys for groups named after built-in sections", () => {
     mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
     mockProjects = [
