@@ -285,8 +285,8 @@ async function resolveEffectiveVersion(
  * SDK's bundled binary (version read from `manifest.json`). The guard never
  * probes an unrelated `claude` on PATH.
  *
- * Skipped entirely in unit tests (`NODE_ENV === "test"` without the integration
- * flag), when the SDK query is mocked, or when
+ * Skipped entirely in unit tests (the `VITEST` env var or `NODE_ENV === "test"`,
+ * without the integration flag), when the SDK query is mocked, or when
  * `AIF_CLAUDE_SKIP_VERSION_CHECK=1` is set. The integration smoke test forces
  * the check on via `AIF_CLAUDE_INTEGRATION=1`.
  */
@@ -300,7 +300,7 @@ export async function assertClaudeExecutableCompatible(
   if (
     process.env.AIF_CLAUDE_SKIP_VERSION_CHECK === "1" ||
     isClaudeQueryMocked() ||
-    (process.env.NODE_ENV === "test" && !isIntegration)
+    ((Boolean(process.env.VITEST) || process.env.NODE_ENV === "test") && !isIntegration)
   ) {
     return;
   }

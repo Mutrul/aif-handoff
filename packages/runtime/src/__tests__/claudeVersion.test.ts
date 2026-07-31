@@ -97,8 +97,11 @@ const recordingLogger = () => {
 describe("assertClaudeExecutableCompatible", () => {
   beforeEach(() => {
     // Default to a non-test env so the DI-driven cases exercise the probe path;
-    // individual skip tests override this.
+    // individual skip tests override this. VITEST must be cleared too — vitest 4
+    // marks the process with VITEST (not NODE_ENV=test), which the guard treats
+    // as a unit-test context.
     vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("VITEST", "");
     vi.stubEnv("AIF_CLAUDE_INTEGRATION", "");
   });
 
@@ -252,6 +255,26 @@ describe("assertClaudeExecutableCompatible", () => {
 
   it("is a no-op in unit tests (NODE_ENV=test without the integration flag)", async () => {
     vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("AIF_CLAUDE_INTEGRATION", "");
+    const probeFn = probe(parseClaudeVersion("2.1.90"));
+
+    await expect(
+      assertClaudeExecutableCompatible(
+        "/bin/claude",
+        undefined,
+        {},
+        { probeClaudeVersion: probeFn },
+      ),
+    ).resolves.toBeUndefined();
+    expect(probeFn).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op under vitest (VITEST env set, no integration flag)", async () => {
+    // vitest 4 marks the process with VITEST rather than NODE_ENV=test; the
+    // guard treats either as a unit-test context so it never spawns a real
+    // binary during the test suite.
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("VITEST", "true");
     vi.stubEnv("AIF_CLAUDE_INTEGRATION", "");
     const probeFn = probe(parseClaudeVersion("2.1.90"));
 
