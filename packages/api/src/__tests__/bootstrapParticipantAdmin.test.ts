@@ -114,6 +114,32 @@ describe("first participant administrator bootstrap", () => {
     });
   });
 
+  it("flushes pending terminal output before showing interactive prompts", async () => {
+    const events: string[] = [];
+    const pendingOutput = new Promise<void>((resolve) => {
+      setImmediate(() => {
+        events.push("warning");
+        resolve();
+      });
+    });
+    const dependencies = createDependencies({
+      promptInteractive: vi.fn(async () => {
+        events.push("prompt");
+        return {
+          username: "admin",
+          displayName: "Admin",
+          password: "protected bootstrap password",
+          passwordConfirmation: "protected bootstrap password",
+        };
+      }),
+    });
+
+    const bootstrap = bootstrapFirstParticipantAdmin([], dependencies);
+    await Promise.all([pendingOutput, bootstrap]);
+
+    expect(events).toEqual(["warning", "prompt"]);
+  });
+
   it("refuses interactive input without a terminal", async () => {
     const dependencies = createDependencies({
       isInteractiveTerminal: vi.fn(() => false),

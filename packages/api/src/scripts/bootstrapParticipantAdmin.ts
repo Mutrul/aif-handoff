@@ -217,6 +217,10 @@ export async function bootstrapFirstParticipantAdmin(
       return 1;
     }
 
+    if (options.interactive) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      log.debug("[FIX:participant-bootstrap-prompt] Pending terminal output flushed");
+    }
     const input = options.interactive
       ? await dependencies.promptInteractive()
       : {
