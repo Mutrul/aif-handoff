@@ -198,16 +198,21 @@ the existing anonymous behavior and existing/new tasks default to AI ownership.
    PARTICIPANT_ALLOWED_ORIGINS=http://localhost:5180
    ```
 
-2. Create a password file outside the repository, restrict it to the current user, and
-   bootstrap the first administrator before sharing the UI:
+2. Bootstrap the first administrator interactively before sharing the UI:
+
+   ```bash
+   npm run participants:bootstrap
+   ```
+
+   The command prompts for identity fields and reads the password plus confirmation without
+   echoing them. Passwords must contain at least 12 characters. `--password` and password
+   values on the command line are rejected so they cannot leak through shell history or
+   process listings. For automation, use protected stdin or a mode-`0600` password file.
 
    ```bash
    chmod 600 /secure/path/admin-password
    npm run participants:bootstrap -- --username admin --display-name "Workspace Admin" --password-file /secure/path/admin-password
    ```
-
-   Passwords must contain at least 12 characters. `--password` and password values on the
-   command line are rejected so they cannot leak through shell history or process listings.
 
 3. For Docker, feed the protected host file through stdin to the API container:
 
@@ -218,7 +223,7 @@ the existing anonymous behavior and existing/new tasks default to AI ownership.
 4. Start or restart the stack and sign in at the web URL. Administrators can create,
    deactivate, rename, change roles, and reset passwords from the participant menu.
 
-Bootstrap is idempotent only when the requested active admin already exists. Once any
+Flag-based bootstrap is idempotent only when the requested active admin already exists. Once any
 participant exists, the command refuses to create another account; use the authenticated
 admin UI/API instead. The final active administrator cannot be deactivated or demoted.
 If every administrator credential is lost, restore a database backup; bootstrap is not a

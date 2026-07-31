@@ -35,6 +35,13 @@ function createDependencies(
     })),
     readPasswordFile: vi.fn(() => "protected bootstrap password\n"),
     readPasswordStdin: vi.fn(() => "protected bootstrap password\n"),
+    isInteractiveTerminal: vi.fn(() => true),
+    promptInteractive: vi.fn(async () => ({
+      username: "admin",
+      displayName: "Admin",
+      password: "protected bootstrap password",
+      passwordConfirmation: "protected bootstrap password",
+    })),
     writeOutput: (message) => output.push(message),
     writeError: (message) => errors.push(message),
     ...overrides,
@@ -44,6 +51,10 @@ function createDependencies(
 }
 
 describe("first participant administrator bootstrap", () => {
+  it("selects interactive prompts when no arguments are provided", () => {
+    expect(parseBootstrapArguments([])).toEqual({ interactive: true });
+  });
+
   it("rejects password arguments and requires exactly one protected input source", () => {
     expect(() =>
       parseBootstrapArguments([
@@ -85,6 +96,61 @@ describe("first participant administrator bootstrap", () => {
     expect(dependencies.output.join("\n")).toContain(existingAdmin.id);
     expect(dependencies.output.join("\n")).not.toContain(password);
     expect(dependencies.errors.join("\n")).not.toContain(password);
+  });
+
+  it("creates the first admin from hidden interactive prompts", async () => {
+    const dependencies = createDependencies();
+    const code = await bootstrapFirstParticipantAdmin([], dependencies);
+
+    expect(code).toBe(0);
+    expect(dependencies.promptInteractive).toHaveBeenCalledTimes(1);
+    expect(dependencies.readPasswordFile).not.toHaveBeenCalled();
+    expect(dependencies.readPasswordStdin).not.toHaveBeenCalled();
+    expect(dependencies.createParticipant).toHaveBeenCalledWith({
+      username: "admin",
+      displayName: "Admin",
+      password: "protected bootstrap password",
+      role: "admin",
+    });
+  });
+
+  it("refuses interactive input without a terminal", async () => {
+    const dependencies = createDependencies({
+      isInteractiveTerminal: vi.fn(() => false),
+    });
+    const code = await bootstrapFirstParticipantAdmin([], dependencies);
+
+    expect(code).toBe(2);
+    expect(dependencies.countParticipants).not.toHaveBeenCalled();
+    expect(dependencies.promptInteractive).not.toHaveBeenCalled();
+    expect(dependencies.errors.join("\n")).toContain("requires a terminal");
+  });
+
+  it("refuses mismatched interactive passwords without persisting", async () => {
+    const dependencies = createDependencies({
+      promptInteractive: vi.fn(async () => ({
+        username: "admin",
+        displayName: "Admin",
+        password: "protected bootstrap password",
+        passwordConfirmation: "different protected password",
+      })),
+    });
+    const code = await bootstrapFirstParticipantAdmin([], dependencies);
+
+    expect(code).toBe(2);
+    expect(dependencies.createParticipant).not.toHaveBeenCalled();
+    expect(dependencies.errors).toEqual(["Passwords do not match."]);
+  });
+
+  it("does not prompt when participant accounts already exist", async () => {
+    const dependencies = createDependencies({
+      countParticipants: vi.fn(() => 1),
+    });
+    const code = await bootstrapFirstParticipantAdmin([], dependencies);
+
+    expect(code).toBe(1);
+    expect(dependencies.promptInteractive).not.toHaveBeenCalled();
+    expect(dependencies.createParticipant).not.toHaveBeenCalled();
   });
 
   it("is idempotent for the same active admin without reading a secret", async () => {

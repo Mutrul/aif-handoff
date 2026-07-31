@@ -1,15 +1,31 @@
 import { readFileSync, statSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
+import { Writable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { countParticipants, createParticipant, findParticipantByUsername } from "@aif/data";
 import { logger } from "@aif/shared";
 
 const log = logger("participant-bootstrap");
 
-interface BootstrapOptions {
+interface ProtectedBootstrapOptions {
+  interactive: false;
   username: string;
   displayName: string;
   passwordFile: string | null;
   passwordStdin: boolean;
+}
+
+interface InteractiveBootstrapOptions {
+  interactive: true;
+}
+
+type BootstrapOptions = ProtectedBootstrapOptions | InteractiveBootstrapOptions;
+
+interface InteractiveBootstrapInput {
+  username: string;
+  displayName: string;
+  password: string;
+  passwordConfirmation: string;
 }
 
 export interface BootstrapDependencies {
@@ -18,6 +34,8 @@ export interface BootstrapDependencies {
   findParticipantByUsername: typeof findParticipantByUsername;
   readPasswordFile(path: string): string;
   readPasswordStdin(): string;
+  isInteractiveTerminal(): boolean;
+  promptInteractive(): Promise<InteractiveBootstrapInput>;
   writeOutput(message: string): void;
   writeError(message: string): void;
 }
@@ -30,6 +48,10 @@ const defaultDependencies: BootstrapDependencies = {
   readPasswordStdin() {
     return readFileSync(0, "utf8");
   },
+  isInteractiveTerminal() {
+    return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  },
+  promptInteractive: promptInteractiveBootstrap,
   writeOutput(message) {
     process.stdout.write(`${message}\n`);
   },
@@ -37,6 +59,42 @@ const defaultDependencies: BootstrapDependencies = {
     process.stderr.write(`${message}\n`);
   },
 };
+
+async function promptInteractiveBootstrap(): Promise<InteractiveBootstrapInput> {
+  let hideInput = false;
+  const output = new Writable({
+    write(chunk, encoding, callback) {
+      if (!hideInput) process.stdout.write(chunk, encoding);
+      callback();
+    },
+  });
+  const prompt = createInterface({
+    input: process.stdin,
+    output,
+    terminal: true,
+    historySize: 0,
+  });
+  const readPassword = async (label: string) => {
+    process.stdout.write(label);
+    hideInput = true;
+    try {
+      return await prompt.question("");
+    } finally {
+      hideInput = false;
+      process.stdout.write("\n");
+    }
+  };
+
+  try {
+    const username = (await prompt.question("Username [admin]: ")).trim() || "admin";
+    const displayName = (await prompt.question("Display name [Admin]: ")).trim() || "Admin";
+    const password = await readPassword("Password: ");
+    const passwordConfirmation = await readPassword("Confirm password: ");
+    return { username, displayName, password, passwordConfirmation };
+  } finally {
+    prompt.close();
+  }
+}
 
 export function readProtectedPasswordFile(path: string): string {
   const metadata = statSync(path);
@@ -60,6 +118,8 @@ function optionValue(args: readonly string[], name: string): string | null {
 }
 
 export function parseBootstrapArguments(args: readonly string[]): BootstrapOptions {
+  if (args.length === 0) return { interactive: true };
+
   if (args.some((argument) => argument === "--password" || argument.startsWith("--password="))) {
     throw new Error("Password arguments are forbidden; use --password-file or --password-stdin");
   }
@@ -99,7 +159,7 @@ export function parseBootstrapArguments(args: readonly string[]): BootstrapOptio
     throw new Error("Choose exactly one of --password-file or --password-stdin");
   }
 
-  return { username, displayName, passwordFile, passwordStdin };
+  return { interactive: false, username, displayName, passwordFile, passwordStdin };
 }
 
 export async function bootstrapFirstParticipantAdmin(
@@ -117,8 +177,25 @@ export async function bootstrapFirstParticipantAdmin(
   }
 
   try {
+    if (options.interactive && !dependencies.isInteractiveTerminal()) {
+      dependencies.writeError(
+        "Interactive bootstrap requires a terminal. Use --password-file or --password-stdin for automation.",
+      );
+      return 2;
+    }
+
     const participantCount = dependencies.countParticipants();
     if (participantCount > 0) {
+      if (options.interactive) {
+        log.warn(
+          { participantCount },
+          "Participant bootstrap refused because accounts already exist",
+        );
+        dependencies.writeError(
+          "Bootstrap refused: participant accounts already exist. Use the authenticated admin API.",
+        );
+        return 1;
+      }
       const existing = dependencies.findParticipantByUsername(options.username);
       if (existing?.active && existing.role === "admin") {
         log.info(
@@ -140,9 +217,30 @@ export async function bootstrapFirstParticipantAdmin(
       return 1;
     }
 
-    const rawPassword = options.passwordFile
-      ? dependencies.readPasswordFile(options.passwordFile)
-      : dependencies.readPasswordStdin();
+    const input = options.interactive
+      ? await dependencies.promptInteractive()
+      : {
+          username: options.username,
+          displayName: options.displayName,
+          password: options.passwordFile
+            ? dependencies.readPasswordFile(options.passwordFile)
+            : dependencies.readPasswordStdin(),
+          passwordConfirmation: null,
+        };
+    if (options.interactive) {
+      log.info("[FIX:participant-bootstrap-interactive] Interactive credentials collected");
+    }
+    const username = input.username.trim();
+    const displayName = input.displayName.trim();
+    if (!username || !displayName) {
+      dependencies.writeError("Username and display name are required.");
+      return 2;
+    }
+    if (input.passwordConfirmation !== null && input.password !== input.passwordConfirmation) {
+      dependencies.writeError("Passwords do not match.");
+      return 2;
+    }
+    const rawPassword = input.password;
     const password = rawPassword.replace(/\r?\n$/, "");
     if (password.length < 12) {
       dependencies.writeError("Bootstrap password must be at least 12 characters.");
@@ -150,8 +248,8 @@ export async function bootstrapFirstParticipantAdmin(
     }
 
     const created = await dependencies.createParticipant({
-      username: options.username,
-      displayName: options.displayName,
+      username,
+      displayName,
       password,
       role: "admin",
     });

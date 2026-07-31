@@ -282,6 +282,39 @@ describe("Board", () => {
     mockTasks.splice(originalLength);
   });
 
+  it("filters Human-owned tasks by assignee", () => {
+    const originalLength = mockTasks.length;
+    mockTasks.push(
+      makeTask({
+        id: "human-alice",
+        title: "Alice Human Task",
+        executionOwner: "human",
+        assignees: [
+          { participantId: "member-1", displayName: "Alice", role: "member", active: true },
+        ],
+      }),
+      makeTask({
+        id: "human-bob",
+        title: "Bob Human Task",
+        executionOwner: "human",
+        assignees: [
+          { participantId: "member-2", displayName: "Bob", role: "member", active: true },
+        ],
+      }),
+    );
+    render(<Board projectId="test-project" onTaskClick={vi.fn()} density="comfortable" />, {
+      wrapper: Wrapper,
+    });
+
+    fireEvent.click(screen.getByText("human-owned"));
+    const assigneeFilters = screen.getByTestId("assignee-filters");
+    fireEvent.click(within(assigneeFilters).getByText("Bob"));
+
+    expect(screen.queryByText("Alice Human Task")).toBeNull();
+    expect(screen.getByText("Bob Human Task")).toBeDefined();
+    mockTasks.splice(originalLength);
+  });
+
   it("should show task descriptions", () => {
     render(<Board projectId="test-project" onTaskClick={vi.fn()} density="comfortable" />, {
       wrapper: Wrapper,

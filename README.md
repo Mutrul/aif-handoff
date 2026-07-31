@@ -157,13 +157,16 @@ For Codex/OpenAI-compatible profiles, configure `OPENAI_API_KEY` and optionally 
 
 Local participant authentication is opt-in and disabled by default. To enable it, set
 `PARTICIPANTS_MODE_ENABLED=true`, configure the exact browser origin in
-`PARTICIPANT_ALLOWED_ORIGINS`, bootstrap the first administrator using protected
-stdin or a mode-`0600` password file, and then start the stack. Existing installations
+`PARTICIPANT_ALLOWED_ORIGINS`, bootstrap the first administrator interactively, and
+then start the stack. Existing installations
 remain anonymous and AI-owned while the flag is off.
 
 ```bash
-npm run participants:bootstrap -- --username admin --display-name "Workspace Admin" --password-stdin
+npm run participants:bootstrap
 ```
+
+The command prompts for the username, display name, and a hidden password with
+confirmation. Protected stdin and mode-`0600` password-file flags remain available for automation.
 
 Human/AI ownership is independent from `autoMode`: ownership selects who is responsible
 for execution, while auto mode controls AI approval gates. See
