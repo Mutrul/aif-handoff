@@ -114,7 +114,7 @@ upgrade preserves anonymous API/UI behavior and treats existing tasks as AI-owne
 | `PARTICIPANT_LOGIN_RATE_LIMIT_MAX`       | `10`                      | Attempts per client/window, from 1 through 1000                                    |
 | `MCP_AUTH_TOKEN`                         | _(required for HTTP MCP)_ | Required whenever `MCP_TRANSPORT=http`, independently of Participants Mode         |
 
-Browser sessions use an opaque `HttpOnly`, `SameSite=Lax` cookie. Only a SHA-256 token
+Browser sessions use an opaque `HttpOnly`, `SameSite=Strict` cookie. Only a SHA-256 token
 digest is persisted; the CSRF value is derived per session and returned by
 `GET /auth/session`. Every unsafe browser request must send both the cookie and the
 matching `X-CSRF-Token` header from an exact allowed `Origin`. REST and WebSocket
@@ -132,7 +132,7 @@ handoff reasons, or provider credentials. Use `LOG_LEVEL=info` or stricter in pr
 Role policy:
 
 - `admin`: manage participants, assign/handoff any eligible task, and use configuration controls.
-- `member`: comment; self-assign an unassigned Human task; act on assigned Human tasks;
+- `member`: comment on any workspace task; self-assign an unassigned Human task; act on assigned Human tasks;
   hand an assigned Human task back to AI. Members cannot act on AI-owned tasks.
 - Every active participant can change their own password after confirming the current
   password. The current session stays active and all other sessions are revoked.

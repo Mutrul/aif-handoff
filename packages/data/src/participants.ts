@@ -535,7 +535,7 @@ export async function changeParticipantPassword(
   actor: AuditActor = SYSTEM_ACTOR,
 ): Promise<ParticipantMutationResult> {
   if (!currentPassword || !newPassword || currentPassword === newPassword || !currentSessionId) {
-    log.warn({ participantId }, "[FIX:participant-self-password] Rejected invalid input");
+    log.warn({ participantId }, "Rejected invalid participant password change input");
     return { ok: false, code: "invalid_input" };
   }
 
@@ -551,10 +551,7 @@ export async function changeParticipantPassword(
   if (!participant) return { ok: false, code: "not_found" };
   if (!participant.active) return { ok: false, code: "inactive_participant" };
   if (!verified) {
-    log.warn(
-      { participantId },
-      "[FIX:participant-self-password] Rejected invalid current password",
-    );
+    log.warn({ participantId }, "Rejected invalid current participant password");
     return { ok: false, code: "invalid_current_password" };
   }
 
@@ -611,7 +608,7 @@ export async function changeParticipantPassword(
       .run();
     log.info(
       { participantId, revokedSessionCount: revokedSessions.changes },
-      "[FIX:participant-self-password] Participant password changed",
+      "Participant password changed",
     );
     return {
       ok: true,

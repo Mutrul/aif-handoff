@@ -73,7 +73,7 @@ export function useAuth() {
     mutationFn: (input: { currentPassword: string; newPassword: string }) =>
       api.changeParticipantPassword(input),
     onSuccess: () => {
-      console.info("[FIX:participant-self-password] Password change completed", {
+      console.info("[auth] Password change completed", {
         participantId:
           queryClient.getQueryData<AuthSessionState>(AUTH_SESSION_QUERY_KEY)?.participant?.id ??
           null,

@@ -49,7 +49,7 @@ function createChangePasswordRateLimiter() {
       c.header("Retry-After", String(retryAfterSeconds));
       log.warn(
         { retryAfterSeconds, path: c.req.path },
-        "[FIX:participant-self-password] Rate limit exceeded",
+        "Participant password change rate limit exceeded",
       );
       return c.json({ error: "Too many password attempts", code: "rate_limited" }, 429);
     },
@@ -116,7 +116,7 @@ authRouter.post("/login", loginRateLimit, jsonValidator(participantLoginSchema),
     setCookie(c, env.PARTICIPANT_SESSION_COOKIE_NAME, result.session.token, {
       httpOnly: true,
       secure: sessionCookieIsSecure(c.req.url),
-      sameSite: "Lax",
+      sameSite: "Strict",
       path: "/",
       maxAge: env.PARTICIPANT_SESSION_TTL_SECONDS,
       expires: new Date(result.session.expiresAt),
@@ -192,7 +192,7 @@ authRouter.post(
           sessionId: auth.session.id,
           revokedSessionCount: result.revokedSessionCount ?? 0,
         },
-        "[FIX:participant-self-password] Password change completed",
+        "Participant password change completed",
       );
       broadcast({
         type: "participant:updated",
@@ -202,7 +202,7 @@ authRouter.post(
     } catch (error) {
       log.error(
         { error, participantId: auth.session.participant.id, sessionId: auth.session.id },
-        "[FIX:participant-self-password] Password change failed",
+        "Participant password change failed",
       );
       return c.json({ error: "Authentication service unavailable", code: "auth_store_error" }, 500);
     }

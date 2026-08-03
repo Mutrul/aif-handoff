@@ -322,6 +322,7 @@ const TASK_ACTION_LOOKUP: Record<TaskEvent, true> = {
   retry_from_blocked: true,
 };
 
+/** Legacy status-only actions; owner-aware UI permissions come from resolveTaskPermissions(). */
 export const HUMAN_ACTIONS_BY_STATUS: Record<TaskStatus, TaskEvent[]> = {
   backlog: ["start_ai"],
   planning: [],

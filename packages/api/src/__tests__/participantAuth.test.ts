@@ -153,7 +153,7 @@ describe("Participants Mode authentication", () => {
     const cookie = login.headers.get("set-cookie");
     expect(cookie).toContain("test_participant_session=");
     expect(cookie).toContain("HttpOnly");
-    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).toContain("SameSite=Strict");
     expect(cookie).toContain("Path=/");
     expect(cookie).toContain("Max-Age=3600");
     expect(cookie).not.toContain(String(body.csrfToken));

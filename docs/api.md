@@ -132,7 +132,7 @@ POST /auth/logout
 ```
 
 `POST /auth/login` accepts `{ "username": "admin", "password": "..." }`, sets an
-opaque `HttpOnly; SameSite=Lax` session cookie, and returns:
+opaque `HttpOnly; SameSite=Strict` session cookie, and returns:
 
 ```json
 {
@@ -1184,6 +1184,10 @@ GET /tasks/:id/comments
 POST /tasks/:id/comments
 ```
 
+With Participants Mode enabled, any active authenticated participant may comment on any
+workspace task and attach files. Assignment controls task mutations, not visibility or
+comment access.
+
 **Body:**
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1520,7 +1524,10 @@ All events are JSON with this structure:
 
 ### Connection
 
-The WebSocket endpoint is a broadcast channel with no topic subscriptions. With
+The WebSocket endpoint is a workspace broadcast channel with no topic subscriptions or
+project ACL filtering: every authenticated socket receives task and project events. The
+`auth:session_revoked` event is the exception and is delivered only by disconnecting the
+matching participant's sockets. With
 Participants Mode disabled, it keeps the legacy anonymous behavior. With Participants
 Mode enabled, the upgrade must include the valid participant session cookie and an exact
 allowed `Origin`; missing, expired, inactive, or disallowed sessions are rejected before

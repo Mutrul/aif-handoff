@@ -70,9 +70,6 @@ export async function internalBroadcastAuth(c: Context, next: () => Promise<void
     return c.json({ error: "Unauthorized broadcast caller" }, 401);
   }
 
-  log.debug(
-    { authMode: decision.mode, path: c.req.path },
-    "[FIX:pr-169] Authorized internal broadcast request",
-  );
+  log.debug({ authMode: decision.mode, path: c.req.path }, "Authorized internal broadcast request");
   await next();
 }

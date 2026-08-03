@@ -119,9 +119,9 @@ function canMutateTask(c: Context<ParticipantApiEnv>, taskId: string): boolean {
   );
   const details = { taskId, actorId, method: c.req.method, path: c.req.path };
   if (assigned) {
-    log.debug(details, "[FIX:pr-169] Authorized assigned participant task mutation");
+    log.debug(details, "Authorized assigned participant task mutation");
   } else {
-    log.warn(details, "[FIX:pr-169] Rejected unauthorized task mutation");
+    log.warn(details, "Rejected unauthorized task mutation");
   }
   return assigned;
 }

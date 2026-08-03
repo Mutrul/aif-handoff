@@ -72,7 +72,7 @@ describe("Participants Mode WebSocket authentication", () => {
     { nodeServerV2Enabled: false, strategy: "legacy" },
     { nodeServerV2Enabled: true, strategy: "node-server-v2" },
   ])(
-    "authenticates and revokes sessions over the real $strategy transport",
+    "authenticates and revokes only the target sessions over the real $strategy transport",
     async ({ nodeServerV2Enabled }) => {
       const participant = await createParticipant({
         username: `ws-${nodeServerV2Enabled ? "v2" : "legacy"}`,
@@ -81,7 +81,17 @@ describe("Participants Mode WebSocket authentication", () => {
       });
       expect(participant.ok).toBe(true);
       if (!participant.ok) return;
+      const observer = await createParticipant({
+        username: `ws-observer-${nodeServerV2Enabled ? "v2" : "legacy"}`,
+        displayName: "WebSocket Observer",
+        password: "another sufficiently safe password",
+      });
+      expect(observer.ok).toBe(true);
+      if (!observer.ok) return;
       const session = createParticipantSession(participant.participant.id, {
+        ttlMs: 60_000,
+      });
+      const observerSession = createParticipantSession(observer.participant.id, {
         ttlMs: 60_000,
       });
       const expiredSession = createParticipantSession(participant.participant.id, {
@@ -89,8 +99,9 @@ describe("Participants Mode WebSocket authentication", () => {
         now: new Date(Date.now() - 2_000),
       });
       expect(session).not.toBeNull();
+      expect(observerSession).not.toBeNull();
       expect(expiredSession).not.toBeNull();
-      if (!session || !expiredSession) return;
+      if (!session || !observerSession || !expiredSession) return;
 
       const app = new Hono();
       const setup = setupWebSocket(app, nodeServerV2Enabled);
@@ -157,7 +168,29 @@ describe("Participants Mode WebSocket authentication", () => {
             participantId: participant.participant.id,
           },
         });
-        expect(getConnectedWebSocketClientCount()).toBe(1);
+
+        const observerWebSocket = new WebSocket(wsUrl, {
+          headers: {
+            cookie: `${COOKIE_NAME}=${observerSession.token}`,
+            origin: ORIGIN,
+          },
+        });
+        const observerConnectedMessage = waitForMessage(observerWebSocket);
+        await new Promise<void>((resolve, reject) => {
+          observerWebSocket.once("open", resolve);
+          observerWebSocket.once("error", reject);
+        });
+        expect(await observerConnectedMessage).toMatchObject({
+          type: "ws:connected",
+          payload: {
+            clientId: expect.any(String),
+            participantId: observer.participant.id,
+          },
+        });
+        expect(getConnectedWebSocketClientCount()).toBe(2);
+
+        const observerMessage = vi.fn();
+        observerWebSocket.on("message", observerMessage);
 
         const closed = new Promise<void>((resolve) => {
           webSocket.once("close", () => resolve());
@@ -168,7 +201,10 @@ describe("Participants Mode WebSocket authentication", () => {
           payload: { participantId: participant.participant.id },
         });
         await closed;
-        expect(getConnectedWebSocketClientCount()).toBe(0);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(observerWebSocket.readyState).toBe(WebSocket.OPEN);
+        expect(observerMessage).not.toHaveBeenCalled();
+        expect(getConnectedWebSocketClientCount()).toBe(1);
       } finally {
         closeAllWebSocketClients();
         await new Promise<void>((resolve, reject) => {

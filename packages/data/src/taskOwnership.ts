@@ -471,7 +471,7 @@ export function handoffTaskExecution(
             : "revision_conflict";
         log.warn(
           { taskId: task.id, code, lockedBy: racedTask?.lockedBy ?? null },
-          "[FIX:pr-169] Task handoff lost atomic update race",
+          "Task handoff lost atomic update race",
         );
         return {
           ok: false,
@@ -551,7 +551,7 @@ export function handoffTaskExecution(
           assigneeCount: ownership.assignees.length,
           status: updated.status,
         },
-        "[FIX:pr-169] Task execution handoff completed",
+        "Task execution handoff completed",
       );
       return {
         ok: true,

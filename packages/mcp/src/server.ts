@@ -143,10 +143,7 @@ export function createMcpHttpHandler(env: McpEnv, context: ToolContext) {
         );
         return;
       }
-      log.debug(
-        { method: req.method, path: url.pathname },
-        "[FIX:pr-169] Authorized MCP HTTP request",
-      );
+      log.debug({ method: req.method, path: url.pathname }, "Authorized MCP HTTP request");
       await handleMcp(req, res);
       return;
     }
