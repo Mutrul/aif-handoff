@@ -41,34 +41,43 @@ const env = {
   // Exercise the opt-in stateless multi-session path in the main suite.
   httpMultiSession: true,
   participantsModeEnabled: false,
-  authToken: null,
+  authToken: "dedicated-mcp-token",
 };
 
 /** POST an arbitrary JSON-RPC message with the headers the SDK requires (else 406). */
-function postRpc(port: number, body: Record<string, unknown>): Promise<Response> {
+function postRpc(
+  port: number,
+  body: Record<string, unknown>,
+  authToken: string | null = env.authToken,
+): Promise<Response> {
   return fetch(`http://localhost:${port}/mcp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       // The SDK returns 406 unless the client accepts BOTH content types.
       Accept: "application/json, text/event-stream",
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     },
     body: JSON.stringify(body),
   });
 }
 
 /** POST a JSON-RPC `initialize` request. */
-function initialize(port: number): Promise<Response> {
-  return postRpc(port, {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: {
-      protocolVersion: "2025-06-18",
-      capabilities: {},
-      clientInfo: { name: "test-client", version: "0.0.0" },
+function initialize(port: number, authToken: string | null = env.authToken): Promise<Response> {
+  return postRpc(
+    port,
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "test-client", version: "0.0.0" },
+      },
     },
-  });
+    authToken,
+  );
 }
 
 /** Read a JSON-RPC payload from either a JSON or an SSE (`data:`) response. */
@@ -106,6 +115,12 @@ describe("MCP HTTP transport — multi-session (opt-in)", () => {
     const res = await fetch(`http://localhost:${port}/health`);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: "ok" });
+  });
+
+  it("requires a bearer token even when Participants Mode is disabled", async () => {
+    const response = await initialize(port, null);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: "mcp_authentication_required" });
   });
 
   it("lets two independent clients initialize without -32600", async () => {
@@ -156,7 +171,10 @@ describe("MCP HTTP transport — multi-session (opt-in)", () => {
     // client for no benefit — so the stateless path is POST-only.
     const res = await fetch(`http://localhost:${port}/mcp`, {
       method: "GET",
-      headers: { Accept: "text/event-stream" },
+      headers: {
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${env.authToken}`,
+      },
     });
     expect(res.status).toBe(405);
     expect(res.headers.get("allow")).toContain("POST");
@@ -205,7 +223,7 @@ describe("MCP HTTP transport — Participants Mode bearer auth", () => {
   it("keeps health public but rejects missing and invalid MCP bearer tokens", async () => {
     expect((await fetch(`http://localhost:${port}/health`)).status).toBe(200);
 
-    const missing = await initialize(port);
+    const missing = await initialize(port, null);
     expect(missing.status).toBe(401);
     expect(await missing.json()).toMatchObject({
       code: "mcp_authentication_required",

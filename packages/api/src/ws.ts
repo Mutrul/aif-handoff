@@ -55,8 +55,6 @@ export function authorizeWebSocketRequest(c: Context): WebSocketAuthorization {
 
   if (
     !participantRequestOriginIsAllowed({
-      requestUrl: c.req.url,
-      host: c.req.header("host"),
       origin: c.req.header("origin"),
       allowedOrigins: env.PARTICIPANT_ALLOWED_ORIGINS,
     })
@@ -240,7 +238,12 @@ export function broadcast(event: WsEvent): void {
   if (event.type === "auth:session_revoked") {
     const payload = event.payload as { participantId?: unknown };
     if (typeof payload.participantId === "string") {
-      disconnectParticipantWebSockets(payload.participantId);
+      const disconnected = disconnectParticipantWebSockets(payload.participantId);
+      log.info(
+        { event: event.type, participantId: payload.participantId, disconnected },
+        "Delivered participant-targeted WS event",
+      );
+      return;
     }
   }
   disconnectInvalidWebSocketSessions();

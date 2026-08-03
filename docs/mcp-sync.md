@@ -63,8 +63,8 @@ When running in Docker, or in local development with `MCP_PORT` set to a valid i
 
 The HTTP mode also exposes a `/health` endpoint for Docker healthchecks.
 
-When `PARTICIPANTS_MODE_ENABLED=true`, HTTP MCP also requires
-`MCP_AUTH_TOKEN`. Every `/mcp` request must send
+HTTP MCP always requires `MCP_AUTH_TOKEN`, independently of Participants Mode.
+Every `/mcp` request must send
 `Authorization: Bearer <MCP_AUTH_TOKEN>`; `/health` remains unauthenticated.
 Invalid or missing credentials return `401` with
 `code: "mcp_authentication_required"`. Token comparison is timing-safe and the
@@ -86,7 +86,7 @@ The MCP server uses the shared monorepo environment (`packages/shared/src/env.ts
 | `MCP_TRANSPORT`                      | `stdio` | Transport mode: `stdio` or `http`                                                                                                                    |
 | `MCP_PORT`                           | `3100`  | HTTP port (`1-65535`, only used when `MCP_TRANSPORT=http`)                                                                                           |
 | `AIF_MCP_HTTP_MULTI_SESSION_ENABLED` | `false` | Opt into stateless multi-session HTTP transport so multiple clients connect concurrently (`1/true/yes/on` = on). Only used when `MCP_TRANSPORT=http` |
-| `MCP_AUTH_TOKEN`                     | unset   | Required bearer token for `/mcp` when Participants Mode and HTTP transport are both enabled                                                          |
+| `MCP_AUTH_TOKEN`                     | unset   | Required bearer token for `/mcp` whenever HTTP transport is enabled                                                                                  |
 | `MCP_RATE_LIMIT_READ_RPM`            | `120`   | Read tool rate limit (requests/minute)                                                                                                               |
 | `MCP_RATE_LIMIT_READ_BURST`          | `10`    | Read tool burst capacity                                                                                                                             |
 | `MCP_RATE_LIMIT_WRITE_RPM`           | `30`    | Write tool rate limit (requests/minute)                                                                                                              |

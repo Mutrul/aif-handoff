@@ -121,31 +121,32 @@ export function createMcpHttpHandler(env: McpEnv, context: ToolContext) {
     }
 
     if (url.pathname === "/mcp") {
-      if (env.participantsModeEnabled) {
-        const token = bearerToken(
-          Array.isArray(req.headers.authorization)
-            ? req.headers.authorization[0]
-            : req.headers.authorization,
+      const token = bearerToken(
+        Array.isArray(req.headers.authorization)
+          ? req.headers.authorization[0]
+          : req.headers.authorization,
+      );
+      if (!env.authToken || !tokensMatch(token, env.authToken)) {
+        log.warn(
+          { method: req.method, path: url.pathname },
+          "Rejected unauthorized MCP HTTP request",
         );
-        if (!env.authToken || !tokensMatch(token, env.authToken)) {
-          log.warn(
-            { method: req.method, path: url.pathname },
-            "Rejected unauthorized MCP HTTP request",
-          );
-          res.writeHead(401, {
-            "Content-Type": "application/json",
-            "WWW-Authenticate": "Bearer",
-          });
-          res.end(
-            JSON.stringify({
-              error: "Unauthorized",
-              code: "mcp_authentication_required",
-            }),
-          );
-          return;
-        }
-        log.debug({ method: req.method, path: url.pathname }, "Authorized MCP HTTP request");
+        res.writeHead(401, {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": "Bearer",
+        });
+        res.end(
+          JSON.stringify({
+            error: "Unauthorized",
+            code: "mcp_authentication_required",
+          }),
+        );
+        return;
       }
+      log.debug(
+        { method: req.method, path: url.pathname },
+        "[FIX:pr-169] Authorized MCP HTTP request",
+      );
       await handleMcp(req, res);
       return;
     }

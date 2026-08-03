@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { participants, taskAssignments, type AuditActor } from "@aif/shared";
+import { participants, taskAssignments, tasks, type AuditActor } from "@aif/shared";
 import { createTestDb } from "@aif/shared/server";
 
 const testDb = { current: createTestDb() };
@@ -456,6 +456,59 @@ describe("atomic execution handoff", () => {
       }).ok,
     ).toBe(true);
     expect(claimTask(handoffFirst.id, "coordinator", 60_000)).toBe(false);
+  });
+
+  it("rejects a lock acquired after the handoff snapshot but before its update", async () => {
+    const alice = await createActiveParticipant("alice", "Alice");
+    const task = createTask({
+      projectId: "project-1",
+      title: "Late claim",
+      description: "",
+    });
+    expect(task).toBeDefined();
+    if (!task) return;
+
+    const db = testDb.current as any;
+    const transaction = db.transaction.bind(db);
+    db.transaction = (callback: (tx: any) => unknown) =>
+      transaction((tx: any) => {
+        const update = tx.update.bind(tx);
+        let injected = false;
+        tx.update = (table: unknown) => {
+          if (table === tasks && !injected) {
+            injected = true;
+            update(tasks)
+              .set({
+                lockedBy: "coordinator",
+                lockedUntil: "2026-07-24T10:05:00.000Z",
+              })
+              .where(eq(tasks.id, task.id))
+              .run();
+          }
+          return update(table);
+        };
+        return callback(tx);
+      });
+
+    try {
+      expect(
+        handoffTaskExecution({
+          taskId: task.id,
+          executionOwner: "human",
+          assigneeIds: [alice.id],
+          expectedOwnershipRevision: 0,
+          actor,
+          now: new Date("2026-07-24T10:00:00.000Z"),
+        }),
+      ).toMatchObject({ ok: false, code: "locked" });
+      expect(findTaskById(task.id)).toMatchObject({
+        executionOwner: "ai",
+        ownershipRevision: 0,
+        lockedBy: "coordinator",
+      });
+    } finally {
+      db.transaction = transaction;
+    }
   });
 
   it("keeps ownership out of generic updates and retains snapshots after rename and task deletion", async () => {

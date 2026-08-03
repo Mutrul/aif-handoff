@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
   auditEvents,
   logger,
@@ -106,6 +106,18 @@ function sameAssignees(current: TaskAssigneeSummary[], requested: TaskAssigneeSu
   const currentIds = current.map((assignee) => assignee.participantId).sort();
   const requestedIds = requested.map((assignee) => assignee.participantId).sort();
   return currentIds.every((participantId, index) => participantId === requestedIds[index]);
+}
+
+function hasLiveTaskLock(
+  task: { lockedBy: string | null; lockedUntil: string | null },
+  nowIso: string,
+  allowLockedBy?: string,
+): boolean {
+  return Boolean(
+    task.lockedBy &&
+    task.lockedBy !== allowLockedBy &&
+    (!task.lockedUntil || task.lockedUntil > nowIso),
+  );
 }
 
 export function buildTaskOwnershipConditions(filters: TaskOwnershipFilters) {
@@ -247,11 +259,7 @@ export function handoffTaskExecution(
         ownershipRevision: task.ownershipRevision,
         assignees: currentAssignees,
       };
-      const hasLiveLock =
-        Boolean(task.lockedBy) &&
-        Boolean(task.lockedUntil) &&
-        (task.lockedUntil ?? "") > nowIso &&
-        task.lockedBy !== input.allowLockedBy;
+      const hasLiveLock = hasLiveTaskLock(task, nowIso, input.allowLockedBy);
       if (hasLiveLock) {
         log.warn(
           {
@@ -366,6 +374,13 @@ export function handoffTaskExecution(
         } as const;
       }
 
+      const lockAvailable = input.allowLockedBy
+        ? or(
+            isNull(tasks.lockedBy),
+            lte(tasks.lockedUntil, nowIso),
+            eq(tasks.lockedBy, input.allowLockedBy),
+          )
+        : or(isNull(tasks.lockedBy), lte(tasks.lockedUntil, nowIso));
       const updated = tx
         .update(tasks)
         .set({
@@ -435,6 +450,7 @@ export function handoffTaskExecution(
             input.expectedStatus === undefined
               ? undefined
               : eq(tasks.status, input.expectedStatus),
+            lockAvailable,
           ),
         )
         .returning({
@@ -444,13 +460,22 @@ export function handoffTaskExecution(
         })
         .get();
       if (!updated) {
+        const racedTask = tx
+          .select({ lockedBy: tasks.lockedBy, lockedUntil: tasks.lockedUntil })
+          .from(tasks)
+          .where(eq(tasks.id, task.id))
+          .get();
+        const code =
+          racedTask && hasLiveTaskLock(racedTask, nowIso, input.allowLockedBy)
+            ? "locked"
+            : "revision_conflict";
         log.warn(
-          { taskId: task.id, code: "revision_conflict" },
-          "Task handoff lost ownership revision race",
+          { taskId: task.id, code, lockedBy: racedTask?.lockedBy ?? null },
+          "[FIX:pr-169] Task handoff lost atomic update race",
         );
         return {
           ok: false,
-          code: "revision_conflict",
+          code,
           ownership: currentOwnership,
         } as const;
       }
@@ -526,7 +551,7 @@ export function handoffTaskExecution(
           assigneeCount: ownership.assignees.length,
           status: updated.status,
         },
-        "Task execution handoff completed",
+        "[FIX:pr-169] Task execution handoff completed",
       );
       return {
         ok: true,

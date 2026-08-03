@@ -25,7 +25,7 @@ export interface McpEnv {
    * `/mcp` endpoint. Only relevant when `transport` is `http`.
    */
   httpMultiSession: boolean;
-  /** Whether Participants Mode requires HTTP transport authentication. */
+  /** Whether Participants Mode is enabled in the shared application. */
   participantsModeEnabled: boolean;
   /** Dedicated bearer token for HTTP MCP. Never used for participant sessions. */
   authToken: string | null;
@@ -94,14 +94,9 @@ export function loadMcpEnv(): McpEnv {
     authToken: process.env.MCP_AUTH_TOKEN?.trim() || null,
   };
 
-  if (env.transport === "http" && env.participantsModeEnabled && !env.authToken) {
-    log.error(
-      { transport: env.transport, participantsModeEnabled: true },
-      "MCP HTTP authentication token is required",
-    );
-    throw new Error(
-      "MCP_AUTH_TOKEN is required when MCP_TRANSPORT=http and PARTICIPANTS_MODE_ENABLED=true.",
-    );
+  if (env.transport === "http" && !env.authToken) {
+    log.error({ transport: env.transport }, "MCP HTTP authentication token is required");
+    throw new Error("MCP_AUTH_TOKEN is required when MCP_TRANSPORT=http.");
   }
 
   log.info(
@@ -110,7 +105,7 @@ export function loadMcpEnv(): McpEnv {
       httpPort: env.httpPort,
       httpMultiSession: env.httpMultiSession,
       participantsModeEnabled: env.participantsModeEnabled,
-      httpAuthRequired: env.transport === "http" && env.participantsModeEnabled,
+      httpAuthRequired: env.transport === "http",
     },
     "MCP environment loaded",
   );

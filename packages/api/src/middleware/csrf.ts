@@ -21,28 +21,11 @@ function hasAllowedOrigin(origin: string | undefined, allowedOrigins: readonly s
   return normalized !== null && allowedOrigins.includes(normalized);
 }
 
-function hostMatchesOrigin(requestUrl: string, host: string | undefined, origin: string): boolean {
-  if (!host) return true;
-  try {
-    const originHostname = new URL(origin).hostname.toLowerCase();
-    const requestHostname = new URL(requestUrl).hostname.toLowerCase();
-    const headerHostname = new URL(`http://${host}`).hostname.toLowerCase();
-    return headerHostname === requestHostname && headerHostname === originHostname;
-  } catch {
-    return false;
-  }
-}
-
 export function participantRequestOriginIsAllowed(input: {
-  requestUrl: string;
-  host: string | undefined;
   origin: string | undefined;
   allowedOrigins: readonly string[];
 }): boolean {
-  return (
-    hasAllowedOrigin(input.origin, input.allowedOrigins) &&
-    hostMatchesOrigin(input.requestUrl, input.host, input.origin ?? "")
-  );
+  return hasAllowedOrigin(input.origin, input.allowedOrigins);
 }
 
 export function participantCsrf(): MiddlewareHandler<ParticipantApiEnv> {
@@ -62,8 +45,6 @@ export function participantCsrf(): MiddlewareHandler<ParticipantApiEnv> {
     const origin = c.req.header("origin");
     if (
       !participantRequestOriginIsAllowed({
-        requestUrl: c.req.url,
-        host: c.req.header("host"),
         origin,
         allowedOrigins: env.PARTICIPANT_ALLOWED_ORIGINS,
       })

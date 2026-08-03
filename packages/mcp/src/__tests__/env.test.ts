@@ -51,6 +51,7 @@ describe("loadMcpEnv", () => {
   it("trims and parses a valid MCP_PORT override", () => {
     process.env.MCP_TRANSPORT = "http";
     process.env.MCP_PORT = " 3200 ";
+    process.env.MCP_AUTH_TOKEN = "dedicated-mcp-token";
 
     const env = loadMcpEnv();
     expect(env.transport).toBe("http");
@@ -103,6 +104,12 @@ describe("loadMcpEnv", () => {
 
   it("requires a dedicated token for HTTP when Participants Mode is enabled", () => {
     sharedEnvState.participantsModeEnabled = true;
+    process.env.MCP_TRANSPORT = "http";
+
+    expect(() => loadMcpEnv()).toThrow("MCP_AUTH_TOKEN is required");
+  });
+
+  it("requires a dedicated token for HTTP when Participants Mode is disabled", () => {
     process.env.MCP_TRANSPORT = "http";
 
     expect(() => loadMcpEnv()).toThrow("MCP_AUTH_TOKEN is required");

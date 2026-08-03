@@ -112,13 +112,15 @@ upgrade preserves anonymous API/UI behavior and treats existing tasks as AI-owne
 | `PARTICIPANT_SESSION_COOKIE_SECURE`      | `false`                   | Force `Secure`; production and direct HTTPS requests enable it automatically       |
 | `PARTICIPANT_LOGIN_RATE_LIMIT_WINDOW_MS` | `60000`                   | Login-attempt window, minimum 1000 ms                                              |
 | `PARTICIPANT_LOGIN_RATE_LIMIT_MAX`       | `10`                      | Attempts per client/window, from 1 through 1000                                    |
-| `MCP_AUTH_TOKEN`                         | _(required for HTTP MCP)_ | Required when `MCP_TRANSPORT=http` and Participants Mode is enabled                |
+| `MCP_AUTH_TOKEN`                         | _(required for HTTP MCP)_ | Required whenever `MCP_TRANSPORT=http`, independently of Participants Mode         |
 
 Browser sessions use an opaque `HttpOnly`, `SameSite=Lax` cookie. Only a SHA-256 token
 digest is persisted; the CSRF value is derived per session and returned by
 `GET /auth/session`. Every unsafe browser request must send both the cookie and the
 matching `X-CSRF-Token` header from an exact allowed `Origin`. REST and WebSocket
-requests reject missing, expired, inactive, or wrong-origin sessions.
+requests reject missing, expired, inactive, or wrong-origin sessions. The allowed
+browser origin may differ from the API host (for example, `app.example.com` calling
+`api.example.com`); validate public API hostnames separately in the reverse proxy.
 
 Passwords are stored as versioned salted scrypt hashes. Login uses a dummy hash for
 unknown users, returns the same `invalid_credentials` response, and is rate-limited.

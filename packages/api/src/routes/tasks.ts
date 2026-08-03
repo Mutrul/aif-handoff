@@ -106,6 +106,26 @@ function requestActionContext(c: Context<ParticipantApiEnv>): TaskActionContext 
   };
 }
 
+function canMutateTask(c: Context<ParticipantApiEnv>, taskId: string): boolean {
+  const context = requestActionContext(c);
+  if (!context.participantsModeEnabled || context.participantRole === "admin") return true;
+
+  const actorId = context.actor.id;
+  const assigned = Boolean(
+    actorId &&
+    getTaskOwnership(taskId)?.assignees.some(
+      (assignee) => assignee.participantId === actorId && assignee.active,
+    ),
+  );
+  const details = { taskId, actorId, method: c.req.method, path: c.req.path };
+  if (assigned) {
+    log.debug(details, "[FIX:pr-169] Authorized assigned participant task mutation");
+  } else {
+    log.warn(details, "[FIX:pr-169] Rejected unauthorized task mutation");
+  }
+  return assigned;
+}
+
 function parseTaskOwnershipFilters(
   c: Context<ParticipantApiEnv>,
   context: TaskActionContext,
@@ -775,6 +795,9 @@ tasksRouter.put("/:id", jsonValidator(updateTaskSchema), async (c) => {
   if (!existing) {
     return c.json({ error: "Task not found" }, 404);
   }
+  if (!canMutateTask(c, id)) {
+    return c.json({ error: "Task assignment or admin role required", code: "forbidden" }, 403);
+  }
 
   const runtimeValidation = validateProjectScopedRuntimeProfileSelections({
     projectId: existing.projectId,
@@ -855,6 +878,13 @@ tasksRouter.put("/:id", jsonValidator(updateTaskSchema), async (c) => {
 // POST /tasks/:id/sync-plan — sync DB plan with physical plan file
 tasksRouter.post("/:id/sync-plan", (c) => {
   const { id } = c.req.param();
+  const existing = findTaskById(id);
+  if (!existing) {
+    return c.json({ error: "Task or project not found" }, 404);
+  }
+  if (!canMutateTask(c, id)) {
+    return c.json({ error: "Task assignment or admin role required", code: "forbidden" }, 403);
+  }
   const result = syncTaskPlanFromFile(id);
   if (!result) {
     return c.json({ error: "Task or project not found" }, 404);
@@ -993,13 +1023,16 @@ tasksRouter.post("/:id/events", jsonValidator(taskEventSchema), async (c) => {
 // POST /tasks/:id/run-qa — manually trigger the aif-qa pipeline (fire-and-forget)
 tasksRouter.post("/:id/run-qa", (c) => {
   const { id } = c.req.param();
-  if (!getEnv().AIF_QA_PIPELINE_ENABLED) {
-    log.warn({ taskId: id }, "QA cannot run — AIF_QA_PIPELINE_ENABLED is disabled");
-    return c.json({ error: "QA pipeline is disabled", code: "feature_disabled" }, 403);
-  }
   const task = findTaskById(id);
   if (!task) {
     return c.json({ error: "Task not found" }, 404);
+  }
+  if (!canMutateTask(c, id)) {
+    return c.json({ error: "Task assignment or admin role required", code: "forbidden" }, 403);
+  }
+  if (!getEnv().AIF_QA_PIPELINE_ENABLED) {
+    log.warn({ taskId: id }, "QA cannot run — AIF_QA_PIPELINE_ENABLED is disabled");
+    return c.json({ error: "QA pipeline is disabled", code: "feature_disabled" }, 403);
   }
   const project = findProjectById(task.projectId);
   if (!project) {
@@ -1047,6 +1080,9 @@ tasksRouter.patch("/:id/position", jsonValidator(reorderTaskSchema), async (c) =
   const existing = findTaskById(id);
   if (!existing) {
     return c.json({ error: "Task not found" }, 404);
+  }
+  if (!canMutateTask(c, id)) {
+    return c.json({ error: "Task assignment or admin role required", code: "forbidden" }, 403);
   }
 
   updateTaskPositionOnly(id, position);

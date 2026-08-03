@@ -41,6 +41,7 @@ const {
   createParticipant,
   createParticipantSession,
   createTask,
+  findTaskById,
   getTaskOwnership,
   listTaskExecutorHistory,
 } = await import("@aif/data");
@@ -337,6 +338,81 @@ describe("task collaboration API", () => {
     });
     expect(forbidden.status).toBe(403);
     expect(await forbidden.json()).toMatchObject({ code: "forbidden" });
+  });
+
+  it("rejects member mutations of tasks they are not assigned to", async () => {
+    const member = await createAuthenticatedParticipant("member");
+    const task = createTask({
+      projectId: PROJECT_ID,
+      title: "Another participant's task",
+      description: "",
+      executionOwner: "ai",
+    });
+    expect(task).toBeDefined();
+    if (!task) return;
+    const app = createApp();
+
+    const requests = [
+      app.request(`/tasks/${task.id}`, {
+        method: "PUT",
+        headers: authHeaders(member.session, true),
+        body: JSON.stringify({ paused: true }),
+      }),
+      app.request(`/tasks/${task.id}/position`, {
+        method: "PATCH",
+        headers: authHeaders(member.session, true),
+        body: JSON.stringify({ position: 2_000 }),
+      }),
+      app.request(`/tasks/${task.id}/sync-plan`, {
+        method: "POST",
+        headers: authHeaders(member.session),
+      }),
+      app.request(`/tasks/${task.id}/run-qa`, {
+        method: "POST",
+        headers: authHeaders(member.session),
+      }),
+    ];
+
+    for (const response of await Promise.all(requests)) {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ code: "forbidden" });
+    }
+    expect(findTaskById(task.id)).toMatchObject({ paused: false, position: task.position });
+  });
+
+  it("allows task mutations by administrators and active assignees", async () => {
+    const admin = await createAuthenticatedParticipant("admin");
+    const member = await createAuthenticatedParticipant("member");
+    const aiTask = createTask({
+      projectId: PROJECT_ID,
+      title: "Admin task",
+      description: "",
+      executionOwner: "ai",
+    });
+    const humanTask = createTask({
+      projectId: PROJECT_ID,
+      title: "Assigned task",
+      description: "",
+      executionOwner: "human",
+      assigneeIds: [member.participant.id],
+    });
+    expect(aiTask && humanTask).toBeTruthy();
+    if (!aiTask || !humanTask) return;
+    const app = createApp();
+
+    const adminUpdate = await app.request(`/tasks/${aiTask.id}`, {
+      method: "PUT",
+      headers: authHeaders(admin.session, true),
+      body: JSON.stringify({ paused: true }),
+    });
+    const assigneeUpdate = await app.request(`/tasks/${humanTask.id}/position`, {
+      method: "PATCH",
+      headers: authHeaders(member.session, true),
+      body: JSON.stringify({ position: 2_000 }),
+    });
+
+    expect(adminUpdate.status).toBe(200);
+    expect(assigneeUpdate.status).toBe(200);
   });
 
   it("requires explicit resume action for manual plan-ready handoff and reports lock conflicts", async () => {

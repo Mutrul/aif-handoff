@@ -661,8 +661,8 @@ Used by API/agent services to trigger project-scoped WebSocket broadcasts withou
 **Security contract:**
 
 - Intended for trusted internal callers (API/agent/mcp services).
-- If `INTERNAL_BROADCAST_TOKEN` is configured, callers must provide the same token via `Authorization: Bearer <token>` or `X-Internal-Broadcast-Token`.
-- If no token is configured, only `NODE_ENV=development` enables the fallback path, and it only accepts loopback caller headers (`127.0.0.1`, `::1`, `localhost`).
+- Outside tests, `INTERNAL_BROADCAST_TOKEN` must be configured and callers must provide the same token via `Authorization: Bearer <token>` or `X-Internal-Broadcast-Token`.
+- Client-supplied proxy headers such as `X-Forwarded-For` never authorize broadcasts.
 - Unauthorized callers receive `401`.
 - Relation validation is enforced before broadcasting:
   - `project:auto_queue_advanced` returns `400` when `taskId` does not belong to the target project.
@@ -980,7 +980,22 @@ PUT /tasks/:id
 
 **Response:** `200 OK` — the updated task object.
 
+With Participants Mode enabled, this endpoint, `POST /tasks/:id/sync-plan`,
+`POST /tasks/:id/run-qa`, and `PATCH /tasks/:id/position` require either an
+administrator or an active task assignee. Other authenticated participants receive
+`403` with `code: "forbidden"` before any mutation or runtime dispatch occurs.
+
 **WebSocket event:** `task:updated`
+
+### Sync Task Plan
+
+```text
+POST /tasks/:id/sync-plan
+```
+
+Reads the task's configured plan file and persists its current contents. Returns the
+updated task, `404` when the task/project or plan file is missing, and the authorization
+error described under Update Task when Participants Mode is enabled.
 
 ### Delete Task
 
@@ -1032,6 +1047,9 @@ With Participants Mode enabled, the server returns the authoritative action subs
 | `blocked_external`    | `retry_from_blocked`                        |
 | `done`                | `approve_done`, `request_changes`           |
 
+For AI-owned tasks, `improve` and `verify` are coordinator-only stages and intentionally
+expose no legacy manual action. Human-owned tasks use the explicit actions above.
+
 Additional constraints:
 
 - `start_implementation` requires `autoMode=false` (manual gate). For `autoMode=true`, implementation is picked automatically by the coordinator.
@@ -1073,6 +1091,7 @@ runs automatically after `approve_done` when `autoQa = true`.
 **Errors:**
 
 - `403` — QA pipeline feature flag is disabled (`AIF_QA_PIPELINE_ENABLED=false`); body carries `code: "feature_disabled"`
+- `403` — participant is neither an administrator nor an active task assignee; body carries `code: "forbidden"`
 - `404` — task not found
 - `404` — project not found
 - `409` — QA is already running (`qaStatus === "running"`)
@@ -1096,6 +1115,9 @@ coordinator always consumes the smallest backlog position first.
 | `position` | number | New position value for sorting |
 
 **Response:** `200 OK` — the updated task object.
+
+**Errors:** `403` with `code: "forbidden"` when Participants Mode is enabled and the
+participant is neither an administrator nor an active task assignee.
 
 **WebSocket event:** `task:updated`
 
@@ -1494,7 +1516,7 @@ All events are JSON with this structure:
 | `participant:created`             | `{ participant, actor }`                                                                           | Admin participant creation                                                           |
 | `participant:updated`             | `{ participant, actor }`                                                                           | Participant update, password change, or password reset                               |
 | `participant:deactivated`         | `{ participant, actor }`                                                                           | Admin participant deactivation                                                       |
-| `auth:session_revoked`            | `{ participantId }`                                                                                | Logout, deactivation, role change, or password reset                                 |
+| `auth:session_revoked`            | `{ participantId }` (participant-targeted; not broadcast to other clients)                         | Logout, deactivation, role change, or password reset                                 |
 
 ### Connection
 

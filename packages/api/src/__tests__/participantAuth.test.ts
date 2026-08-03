@@ -372,16 +372,16 @@ describe("Participants Mode request security", () => {
     });
     expect(evilOrigin.status).toBe(403);
 
-    const mismatchedHost = await app.request("/tasks/example/comments", {
+    const crossHost = await app.request("/tasks/example/comments", {
       method: "POST",
       headers: {
         cookie: cookieHeader(session.token),
-        host: "attacker.invalid",
+        host: "api.example.test",
         origin: ALLOWED_ORIGIN,
         "x-csrf-token": session.csrfToken,
       },
     });
-    expect(mismatchedHost.status).toBe(403);
+    expect(crossHost.status).toBe(200);
 
     const missingCsrf = await app.request("/tasks/example/comments", {
       method: "POST",
@@ -475,6 +475,21 @@ describe("Participants Mode request security", () => {
       headers: { "x-internal-broadcast-token": securityConfig.internalToken },
     });
     expect(accepted.status).toBe(200);
+  });
+
+  it("does not trust client-supplied proxy addresses for internal broadcasts", async () => {
+    securityConfig.enabled = false;
+    securityConfig.internalToken = "";
+    vi.stubEnv("NODE_ENV", "development");
+    try {
+      const response = await createApp().request("/tasks/example/broadcast", {
+        method: "POST",
+        headers: { "x-forwarded-for": "127.0.0.1" },
+      });
+      expect(response.status).toBe(401);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("emits credentialed CORS headers only for exact configured origins", async () => {
