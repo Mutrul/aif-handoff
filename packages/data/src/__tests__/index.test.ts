@@ -1539,7 +1539,7 @@ describe("data layer", () => {
 
     it("filters by status", () => {
       const t = createTask({ projectId: "proj-1", title: "Status test", description: "" });
-      setTaskFields(t!.id, { status: "planning" });
+      updateTaskStatus(t!.id, "planning");
       createTask({ projectId: "proj-1", title: "Backlog", description: "" });
       const result = listTasksPaginated({ status: "planning" });
       expect(result.total).toBe(1);
@@ -1703,8 +1703,7 @@ describe("data layer", () => {
       });
       expect(hasBlockingAutoQueueCommitForProject("proj-1")).toBe(false);
 
-      setTaskFields("terminal-pending", {
-        status: "blocked_external",
+      updateTaskStatus("terminal-pending", "blocked_external", {
         autoQueueCommitStatus: "failed",
       });
       expect(hasBlockingAutoQueueCommitForProject("proj-1")).toBe(true);

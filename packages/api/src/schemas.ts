@@ -1,6 +1,50 @@
 import { z } from "zod";
 import { TASK_EVENTS, TASK_STATUSES, getEnv } from "@aif/shared";
 
+export const participantLoginSchema = z.object({
+  username: z.string().trim().min(1).max(200),
+  password: z.string().min(1).max(10_000),
+});
+
+const participantPasswordSchema = z.string().min(12).max(10_000);
+
+export const createParticipantSchema = z.object({
+  username: z.string().trim().min(1).max(200),
+  displayName: z.string().trim().min(1).max(200),
+  password: participantPasswordSchema,
+  role: z.enum(["admin", "member"]).default("member"),
+});
+
+export const updateParticipantSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(200).optional(),
+    role: z.enum(["admin", "member"]).optional(),
+  })
+  .refine((input) => input.displayName !== undefined || input.role !== undefined, {
+    message: "At least one participant field is required",
+  });
+
+export const resetParticipantPasswordSchema = z.object({
+  password: participantPasswordSchema,
+});
+
+export const changeParticipantPasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(10_000),
+    newPassword: participantPasswordSchema,
+  })
+  .refine((input) => input.currentPassword !== input.newPassword, {
+    message: "New password must differ from the current password",
+    path: ["newPassword"],
+  });
+
+export const listParticipantsQuerySchema = z.object({
+  includeInactive: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .default(false),
+});
+
 /**
  * ISO-8601 datetime accepted with any offset, but **normalized to UTC `Z`**
  * before storage. We compare `scheduledAt` as TEXT in the DB (`<=` against
@@ -61,6 +105,8 @@ export const createTaskSchema = z.object({
   attachments: z.array(taskAttachmentSchema).max(100).default([]),
   priority: z.number().int().min(0).max(5).default(0),
   autoMode: z.boolean().default(true),
+  executionOwner: z.enum(["ai", "human"]).default("ai"),
+  assigneeIds: z.array(z.string().min(1)).max(100).default([]),
   isFix: z.boolean().default(false),
   plannerMode: z.enum(["fast", "full"]).default("fast"),
   planPath: z.string().max(500).optional(),
@@ -126,6 +172,16 @@ export const taskEventSchema = z.object({
   event: z.enum(TASK_EVENTS),
   deletePlanFile: z.boolean().optional(),
   commitOnApprove: z.boolean().optional(),
+});
+
+export const handoffTaskSchema = z.object({
+  executionOwner: z.enum(["ai", "human"]),
+  assigneeIds: z.array(z.string().min(1)).max(100).default([]),
+  expectedOwnershipRevision: z.number().int().min(0),
+  expectedExecutionOwner: z.enum(["ai", "human"]).optional(),
+  expectedStatus: z.enum(TASK_STATUSES).optional(),
+  reason: z.string().trim().min(1).max(2_000).optional(),
+  resumeAction: z.enum(TASK_EVENTS).optional(),
 });
 
 export const createTaskCommentSchema = z.object({

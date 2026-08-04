@@ -97,6 +97,65 @@ The web UI (`@aif/web`) uses named timeout constants for HTTP requests to the AP
 
 If a request exceeds its timeout, the browser aborts the fetch and the user sees a "Request timed out" error. The backend process may continue running independently.
 
+## Participants Mode
+
+Participants Mode adds local accounts, RBAC, credentialed CORS, session-bound CSRF,
+authenticated WebSockets, and explicit task ownership. It is off by default, so an
+upgrade preserves anonymous API/UI behavior and treats existing tasks as AI-owned.
+
+| Variable                                 | Default                   | Rules                                                                              |
+| ---------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
+| `PARTICIPANTS_MODE_ENABLED`              | `false`                   | Enables the complete participant/auth/ownership policy                             |
+| `PARTICIPANT_ALLOWED_ORIGINS`            | `http://localhost:5180`   | Comma-separated exact origins; paths, wildcards, and trailing slashes are rejected |
+| `PARTICIPANT_SESSION_TTL_SECONDS`        | `604800` (7 days)         | Integer from 300 seconds through 365 days                                          |
+| `PARTICIPANT_SESSION_COOKIE_NAME`        | `aif_participant_session` | Letters, digits, `_`, and `-` only                                                 |
+| `PARTICIPANT_SESSION_COOKIE_SECURE`      | `false`                   | Force `Secure`; production and direct HTTPS requests enable it automatically       |
+| `PARTICIPANT_LOGIN_RATE_LIMIT_WINDOW_MS` | `60000`                   | Login-attempt window, minimum 1000 ms                                              |
+| `PARTICIPANT_LOGIN_RATE_LIMIT_MAX`       | `10`                      | Attempts per client/window, from 1 through 1000                                    |
+| `MCP_AUTH_TOKEN`                         | _(required for HTTP MCP)_ | Required whenever `MCP_TRANSPORT=http`, independently of Participants Mode         |
+
+Browser sessions use an opaque `HttpOnly`, `SameSite=Strict` cookie. Only a SHA-256 token
+digest is persisted; the CSRF value is derived per session and returned by
+`GET /auth/session`. Every unsafe browser request must send both the cookie and the
+matching `X-CSRF-Token` header from an exact allowed `Origin`. REST and WebSocket
+requests reject missing, expired, inactive, or wrong-origin sessions. The allowed
+browser origin may differ from the API host (for example, `app.example.com` calling
+`api.example.com`); validate public API hostnames separately in the reverse proxy.
+
+Passwords are stored as versioned salted scrypt hashes. Login uses a dummy hash for
+unknown users, returns the same `invalid_credentials` response, and is rate-limited.
+Logs may contain participant/session IDs, counts, actions, and structured error codes,
+but never passwords, hashes, raw cookies, bearer tokens, CSRF tokens, comment bodies,
+handoff reasons, or provider credentials. Use `LOG_LEVEL=info` or stricter in production;
+`debug` remains redacted but is intentionally verbose.
+
+Role policy:
+
+- `admin`: manage participants, assign/handoff any eligible task, and use configuration controls.
+- `member`: comment on any workspace task; self-assign an unassigned Human task; act on assigned Human tasks;
+  hand an assigned Human task back to AI. Members cannot act on AI-owned tasks.
+- Every active participant can change their own password after confirming the current
+  password. The current session stays active and all other sessions are revoked.
+- The final active admin cannot be demoted or deactivated. Deactivation and password
+  reset revoke that participant's active sessions immediately.
+
+`executionOwner` and `autoMode` are independent. Human-owned tasks are excluded from
+all agent/scheduler/auto-queue/watchdog/runtime-budget selection. Ownership does not
+create filesystem isolation: do not edit a shared project/worktree until any prior AI
+run and lease have ended. The handoff endpoint rejects a live lock and uses
+`expectedOwnershipRevision` as an optimistic-concurrency guard.
+
+The first admin is created with `npm run participants:bootstrap`; see
+[Getting Started](getting-started.md#participants-mode). Once accounts exist, recovery
+uses an authenticated admin password reset. If all admin credentials are lost, restore
+the SQLite database from backup—the bootstrap command deliberately refuses to bypass an
+initialized participant store.
+
+Both Angie configurations forward `Cookie`, `Origin`, `Host`, `X-Forwarded-For`, and
+`X-Forwarded-Proto` on REST and WebSocket proxy paths. Keep those headers intact in any
+replacement proxy; production browser origins should use the public HTTPS origin and
+`PARTICIPANT_SESSION_COOKIE_SECURE=true`.
+
 ## Authentication
 
 Runtime profiles support provider-specific auth setup. Each adapter resolves credentials from its corresponding env vars:

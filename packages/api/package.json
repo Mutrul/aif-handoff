@@ -13,7 +13,8 @@
     "test": "vitest run --configLoader runner",
     "coverage": "vitest run --coverage",
     "lint": "eslint \"src/**/*.ts\"",
-    "test:watch": "vitest --configLoader runner"
+    "test:watch": "vitest --configLoader runner",
+    "participants:bootstrap": "node --import tsx src/scripts/bootstrapParticipantAdmin.ts"
   },
   "dependencies": {
     "@aif/data": "*",

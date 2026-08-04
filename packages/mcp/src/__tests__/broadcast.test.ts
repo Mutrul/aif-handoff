@@ -133,6 +133,36 @@ describe("broadcastTaskChange with Telegram", () => {
     expect(tgBody.text).toContain("plan\\_ready");
   });
 
+  it("uses the internal broadcast credential without putting it in the body", async () => {
+    vi.doMock("@aif/shared", async () => {
+      const actual = await vi.importActual<typeof import("@aif/shared")>("@aif/shared");
+      return {
+        ...actual,
+        getEnv: () => ({
+          API_BASE_URL: "http://localhost:3009",
+          INTERNAL_BROADCAST_TOKEN: "internal-broadcast-secret",
+        }),
+        sendTelegramNotification: async () => {},
+      };
+    });
+    const { broadcastTaskChange: broadcast } = await import("../utils/broadcast.js");
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", mockFetch);
+
+    await broadcast("task-abc");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:3009/tasks/task-abc/broadcast",
+      expect.objectContaining({
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Broadcast-Token": "internal-broadcast-secret",
+        },
+      }),
+    );
+    expect(mockFetch.mock.calls[0][1].body).not.toContain("internal-broadcast-secret");
+  });
+
   it("skips Telegram when fromStatus equals toStatus", async () => {
     vi.doMock("@aif/shared", async () => {
       const actual = await vi.importActual<typeof import("@aif/shared")>("@aif/shared");

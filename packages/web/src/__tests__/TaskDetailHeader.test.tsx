@@ -10,6 +10,9 @@ const baseTask: Task = {
   description: "desc",
   attachments: [],
   autoMode: false,
+  executionOwner: "ai",
+  ownershipRevision: 0,
+  assignees: [],
   isFix: false,
   plannerMode: "full",
   planPath: ".ai-factory/PLAN.md",
@@ -185,6 +188,41 @@ describe("TaskDetailHeader", () => {
     expect(onActionClick).toHaveBeenCalledWith(
       expect.objectContaining({ event: "start_implementation" }),
     );
+  });
+
+  it("should render only server-permitted actions and the handoff control", () => {
+    const onOpenHandoff = vi.fn();
+
+    render(
+      <TaskDetailHeader
+        task={{
+          ...baseTask,
+          permissions: {
+            canAssign: false,
+            canHandoff: true,
+            canSelfAssign: false,
+            canAct: true,
+            canComment: true,
+            permittedActions: ["fast_fix"],
+          },
+        }}
+        activeTab="implementation"
+        onTabChange={vi.fn()}
+        onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
+        isDisabled={false}
+        isCheckingStartAi={false}
+        planChangeSuccess={null}
+        onClose={vi.fn()}
+        onOpenHandoff={onOpenHandoff}
+      />,
+    );
+
+    expect(screen.getByText("Fast fix")).toBeDefined();
+    expect(screen.queryByText("Start implementation")).toBeNull();
+    expect(screen.queryByText("Request replanning")).toBeNull();
+    fireEvent.click(screen.getByText("Assign / hand off"));
+    expect(onOpenHandoff).toHaveBeenCalledOnce();
   });
 
   it("should call onTabChange when tab is clicked", () => {
