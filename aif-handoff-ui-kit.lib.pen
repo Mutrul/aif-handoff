@@ -13137,6 +13137,2375 @@
           ]
         }
       ]
+    },
+    {
+      "type": "frame",
+      "id": "u8DlJ",
+      "x": 5640,
+      "y": 0,
+      "name": "Participants Mode UI Sync",
+      "theme": {
+        "mode": "dark"
+      },
+      "clip": true,
+      "width": 1440,
+      "fill": "$background",
+      "layout": "vertical",
+      "gap": 24,
+      "padding": 32,
+      "children": [
+        {
+          "type": "frame",
+          "id": "CceDH",
+          "name": "Participants Header",
+          "width": "fill_container",
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "bLvTS",
+              "name": "Participants Header Copy",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 6,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "r3Kuj0",
+                  "name": "Participants Title",
+                  "fill": "$foreground",
+                  "content": "Participants Mode",
+                  "fontFamily": "IBM Plex Mono",
+                  "fontSize": 28,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "B7aYeZ",
+                  "name": "Participants Subtitle",
+                  "fill": "$muted-foreground",
+                  "content": "Local authentication, human ownership, controlled handoffs, and executor history",
+                  "fontFamily": "IBM Plex Mono",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "id": "CPmOO",
+              "type": "ref",
+              "ref": "NwwhS",
+              "name": "Mode Badge",
+              "descendants": {
+                "TFJjY": {
+                  "content": "OPTIONAL · OFF BY DEFAULT"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "NNd3m",
+          "name": "Participants Feature Grid",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 20,
+          "children": [
+            {
+              "type": "frame",
+              "id": "Ttmo4",
+              "name": "Authentication and Administration",
+              "width": "fill_container",
+              "gap": 20,
+              "children": [
+                {
+                  "id": "boSM4",
+                  "type": "ref",
+                  "ref": "Nie8I",
+                  "name": "Login Screen",
+                  "width": 420,
+                  "descendants": {
+                    "Ap3op": {
+                      "content": "Sign in to AIF Handoff"
+                    },
+                    "kaoPr": {
+                      "content": "Use the local participant account created by an administrator."
+                    },
+                    "0ndYv": {
+                      "layout": "vertical",
+                      "gap": 12,
+                      "height": "fit_content",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "G89mee",
+                          "name": "Username Label",
+                          "fill": "$foreground",
+                          "content": "Username",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 11,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "id": "qkI8s",
+                          "type": "ref",
+                          "ref": "yA4l7",
+                          "name": "Username Input",
+                          "width": "fill_container",
+                          "descendants": {
+                            "xAwdW": {
+                              "content": "mira"
+                            }
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "id": "RPXeF",
+                          "name": "Password Label",
+                          "fill": "$foreground",
+                          "content": "Password",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 11,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "id": "C5xbE",
+                          "type": "ref",
+                          "ref": "yA4l7",
+                          "name": "Password Input",
+                          "width": "fill_container",
+                          "descendants": {
+                            "xAwdW": {
+                              "content": "••••••••••••"
+                            }
+                          }
+                        },
+                        {
+                          "id": "ttgDj",
+                          "type": "ref",
+                          "ref": "nkhJd",
+                          "name": "Security Notice",
+                          "width": "fill_container",
+                          "descendants": {
+                            "TITDo": {
+                              "icon": "shield-check"
+                            },
+                            "goVRa": {
+                              "content": "HttpOnly session · CSRF protected"
+                            }
+                          }
+                        },
+                        {
+                          "id": "xHKHv",
+                          "type": "ref",
+                          "ref": "3CI7c",
+                          "name": "Sign In Button",
+                          "width": "fill_container",
+                          "descendants": {
+                            "wMRLg": {
+                              "content": "Sign in"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "id": "E5b32",
+                  "type": "ref",
+                  "ref": "Nie8I",
+                  "name": "Participant Administration",
+                  "width": "fill_container",
+                  "descendants": {
+                    "Ap3op": {
+                      "content": "Participants"
+                    },
+                    "kaoPr": {
+                      "content": "Administrators manage local identities, roles, and active access."
+                    },
+                    "0ndYv": {
+                      "layout": "vertical",
+                      "gap": 12,
+                      "height": "fit_content",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "INb3t",
+                          "name": "Participant Toolbar",
+                          "width": "fill_container",
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "dIMvl",
+                              "name": "Signed In Participant Menu",
+                              "gap": 8,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "id": "hmDQm",
+                                  "type": "ref",
+                                  "ref": "ztFq7",
+                                  "name": "Mira Avatar"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "WWVRw",
+                                  "name": "Signed In Identity",
+                                  "layout": "vertical",
+                                  "gap": 2,
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "IChw6",
+                                      "name": "Signed In Name",
+                                      "fill": "$foreground",
+                                      "content": "Mira Chen",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "600"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "O38jD",
+                                      "name": "Signed In Role",
+                                      "fill": "$muted-foreground",
+                                      "content": "ADMIN",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "id": "Zp61X",
+                              "type": "ref",
+                              "ref": "3CI7c",
+                              "name": "Add Participant Button",
+                              "descendants": {
+                                "wMRLg": {
+                                  "content": "+ Add participant"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "nSGqJ",
+                          "name": "Participants Table",
+                          "width": "fill_container",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "uXDrz",
+                              "name": "Participants Header Row",
+                              "width": "fill_container",
+                              "fill": "$muted",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "wp4Oz",
+                                  "name": "Participant Header Cell",
+                                  "width": "fill_container",
+                                  "height": 36,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "tGyfD",
+                                      "name": "Participant Header",
+                                      "fill": "$muted-foreground",
+                                      "content": "Participant",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "su0OB",
+                                  "name": "Role Header Cell",
+                                  "width": 120,
+                                  "height": 36,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "l107P",
+                                      "name": "Role Header",
+                                      "fill": "$muted-foreground",
+                                      "content": "Role",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "rFgVx",
+                                  "name": "Status Header Cell",
+                                  "width": 120,
+                                  "height": 36,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "kR0Cf",
+                                      "name": "Status Header",
+                                      "fill": "$muted-foreground",
+                                      "content": "Status",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "e1GDTt",
+                                  "name": "Action Header Cell",
+                                  "width": 100,
+                                  "height": 36,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "B7u66",
+                                      "name": "Action Header",
+                                      "fill": "$muted-foreground",
+                                      "content": "Action",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "xj6JS",
+                              "name": "Mira Chen Row",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "wYPXK",
+                                  "name": "Mira Chen Cell",
+                                  "width": "fill_container",
+                                  "height": 46,
+                                  "gap": 8,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "id": "mtsLk",
+                                      "type": "ref",
+                                      "ref": "ztFq7",
+                                      "name": "Mira Chen Avatar",
+                                      "width": 26,
+                                      "height": 26
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "vbGUy",
+                                      "name": "Mira Chen Identity",
+                                      "layout": "vertical",
+                                      "gap": 1,
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "KMv9o",
+                                          "name": "Mira Chen Name",
+                                          "fill": "$foreground",
+                                          "content": "Mira Chen",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 11,
+                                          "fontWeight": "500"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "S5ooWS",
+                                          "name": "Mira Chen Username",
+                                          "fill": "$muted-foreground",
+                                          "content": "@mira",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "MVNP9",
+                                  "name": "Mira Chen Role Cell",
+                                  "width": 120,
+                                  "height": 46,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "H4h39",
+                                      "name": "Mira Chen Role",
+                                      "fill": "$foreground",
+                                      "content": "Admin",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 11,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "j72Tbc",
+                                  "name": "Mira Chen Status Cell",
+                                  "width": 120,
+                                  "height": 46,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "o1s5Qz",
+                                      "name": "Mira Chen Status",
+                                      "fill": "$success",
+                                      "content": "● Active",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "Yud2E",
+                                  "name": "Mira Chen Action Cell",
+                                  "width": 100,
+                                  "height": 46,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "Vju3o",
+                                      "name": "Mira Chen Action",
+                                      "fill": "$primary",
+                                      "content": "Manage",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "KTWJ2",
+                              "name": "Noah Ruiz Row",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "f0wW6D",
+                                  "name": "Noah Ruiz Cell",
+                                  "width": "fill_container",
+                                  "height": 46,
+                                  "gap": 8,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "id": "QS8nb",
+                                      "type": "ref",
+                                      "ref": "ztFq7",
+                                      "name": "Noah Ruiz Avatar",
+                                      "width": 26,
+                                      "height": 26
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "u9S1PM",
+                                      "name": "Noah Ruiz Identity",
+                                      "layout": "vertical",
+                                      "gap": 1,
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "PFSZo",
+                                          "name": "Noah Ruiz Name",
+                                          "fill": "$foreground",
+                                          "content": "Noah Ruiz",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 11,
+                                          "fontWeight": "500"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "oGfKo",
+                                          "name": "Noah Ruiz Username",
+                                          "fill": "$muted-foreground",
+                                          "content": "@noah",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "d0YAIT",
+                                  "name": "Noah Ruiz Role Cell",
+                                  "width": 120,
+                                  "height": 46,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "R4LpUg",
+                                      "name": "Noah Ruiz Role",
+                                      "fill": "$foreground",
+                                      "content": "Member",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 11,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "UJpya",
+                                  "name": "Noah Ruiz Status Cell",
+                                  "width": 120,
+                                  "height": 46,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "irxWa",
+                                      "name": "Noah Ruiz Status",
+                                      "fill": "$muted-foreground",
+                                      "content": "● Inactive",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "jZydF",
+                                  "name": "Noah Ruiz Action Cell",
+                                  "width": 100,
+                                  "height": 46,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "LBYtm",
+                                      "name": "Noah Ruiz Action",
+                                      "fill": "$primary",
+                                      "content": "Reactivate",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "aHRnb",
+              "name": "Ownership and History",
+              "width": "fill_container",
+              "gap": 20,
+              "children": [
+                {
+                  "id": "XmUEz",
+                  "type": "ref",
+                  "ref": "Nie8I",
+                  "name": "Task Ownership Controls",
+                  "width": 620,
+                  "descendants": {
+                    "Ap3op": {
+                      "content": "Task ownership"
+                    },
+                    "kaoPr": {
+                      "content": "Owner and assignees control human execution; automation remains a separate setting."
+                    },
+                    "0ndYv": {
+                      "layout": "vertical",
+                      "gap": 14,
+                      "height": "fit_content",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "zro9n",
+                          "name": "Owner Summary",
+                          "width": "fill_container",
+                          "fill": "$muted",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "KEVEm",
+                              "name": "Current Owner Identity",
+                              "gap": 8,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "id": "znIqr",
+                                  "type": "ref",
+                                  "ref": "ztFq7",
+                                  "name": "Current Owner Avatar"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "noByY",
+                                  "name": "Current Owner Copy",
+                                  "layout": "vertical",
+                                  "gap": 2,
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "l1O8k",
+                                      "name": "Current Owner Name",
+                                      "fill": "$foreground",
+                                      "content": "Mira Chen",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "600"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "ONkcX",
+                                      "name": "Current Owner Detail",
+                                      "fill": "$muted-foreground",
+                                      "content": "OWNER · revision 4",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "id": "ONdLU",
+                              "type": "ref",
+                              "ref": "NwwhS",
+                              "name": "Human Owner Badge",
+                              "descendants": {
+                                "TFJjY": {
+                                  "content": "HUMAN"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "etjYQ",
+                          "name": "Ownership Fields",
+                          "width": "fill_container",
+                          "gap": 12,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "r4Rp2",
+                              "name": "Owner Field",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "e2bAm",
+                                  "name": "Owner Field Label",
+                                  "fill": "$foreground",
+                                  "content": "Owner",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "ax6W0",
+                                  "name": "Owner Select Trigger",
+                                  "width": "fill_container",
+                                  "height": 36,
+                                  "fill": "$card",
+                                  "stroke": "$input",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "padding": [
+                                    4,
+                                    12
+                                  ],
+                                  "justifyContent": "space_between",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "R9Kp1W",
+                                      "name": "Owner Select Value",
+                                      "fill": "$foreground",
+                                      "content": "Mira Chen",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 12,
+                                      "fontWeight": "normal"
+                                    },
+                                    {
+                                      "type": "icon",
+                                      "id": "NsIsp",
+                                      "name": "Owner Select Chevron",
+                                      "width": 14,
+                                      "height": 14,
+                                      "icon": "chevron-down",
+                                      "library": "lucide",
+                                      "fill": "$muted-foreground"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "YDWvk",
+                              "name": "Assignee Field",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "iAx5a",
+                                  "name": "Assignee Field Label",
+                                  "fill": "$foreground",
+                                  "content": "Assignees",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "bXA5Q",
+                                  "name": "Assignee Chips",
+                                  "width": "fill_container",
+                                  "height": 36,
+                                  "fill": "$card",
+                                  "stroke": "$input",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "gap": 6,
+                                  "padding": [
+                                    4,
+                                    8
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "oOmeF",
+                                      "name": "Mira Assignee Chip",
+                                      "fill": "$muted",
+                                      "stroke": "$border",
+                                      "strokeWidth": 1,
+                                      "strokeAlignment": "inner",
+                                      "padding": [
+                                        3,
+                                        7
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "UGKRs",
+                                          "name": "Mira Assignee Label",
+                                          "fill": "$foreground",
+                                          "content": "Mira",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "frame",
+                                      "id": "o8Ycb",
+                                      "name": "Noah Assignee Chip",
+                                      "fill": "$muted",
+                                      "stroke": "$border",
+                                      "strokeWidth": 1,
+                                      "strokeAlignment": "inner",
+                                      "padding": [
+                                        3,
+                                        7
+                                      ],
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "We34Y",
+                                          "name": "Noah Assignee Label",
+                                          "fill": "$foreground",
+                                          "content": "Noah",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "ze5pU",
+                          "name": "Automation Setting",
+                          "width": "fill_container",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "padding": [
+                            9,
+                            12
+                          ],
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "LVYRN",
+                              "name": "Automation Copy",
+                              "layout": "vertical",
+                              "gap": 2,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "g4Q5X",
+                                  "name": "Automation Label",
+                                  "fill": "$foreground",
+                                  "content": "AI auto mode",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "dBJzM",
+                                  "name": "Automation Description",
+                                  "fill": "$muted-foreground",
+                                  "content": "Independent from the human owner",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "BHHYF",
+                              "name": "Automation State",
+                              "fill": "$muted-foreground",
+                              "content": "OFF",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 10,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "id": "RkdKA",
+                          "type": "ref",
+                          "ref": "aTMES",
+                          "name": "Handoff Dialog",
+                          "width": "fill_container",
+                          "descendants": {
+                            "d38UP": {
+                              "content": "Hand off task"
+                            },
+                            "mB1Mi": {
+                              "content": "Transfer execution to another participant using the latest ownership revision."
+                            },
+                            "b17V1": {
+                              "content": "New owner: Noah Ruiz\nReason: Continue implementation after review feedback."
+                            },
+                            "JFWx1/aTVi9": {
+                              "content": "Cancel"
+                            },
+                            "Yw7PF/wMRLg": {
+                              "content": "Hand off"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "id": "PyIX2",
+                  "type": "ref",
+                  "ref": "Nie8I",
+                  "name": "Executor History",
+                  "width": "fill_container",
+                  "descendants": {
+                    "Ap3op": {
+                      "content": "Executors"
+                    },
+                    "kaoPr": {
+                      "content": "Immutable ownership revisions show who executed the task and why control changed."
+                    },
+                    "0ndYv": {
+                      "layout": "vertical",
+                      "gap": 12,
+                      "height": "fit_content",
+                      "children": [
+                        {
+                          "id": "bb1AY",
+                          "type": "ref",
+                          "ref": "DMyKv",
+                          "name": "Task Detail Tabs",
+                          "descendants": {
+                            "9NBN9": {
+                              "content": "Executors"
+                            },
+                            "Q1czS": {
+                              "content": "Activity"
+                            }
+                          }
+                        },
+                        {
+                          "type": "frame",
+                          "id": "cHqSv",
+                          "name": "Executor Timeline",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "wbvzx",
+                              "name": "Mira Chen Timeline Event",
+                              "width": "fill_container",
+                              "gap": 10,
+                              "padding": [
+                                10,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "z8hoj",
+                                  "name": "Mira Chen Timeline Marker",
+                                  "width": 26,
+                                  "height": 26,
+                                  "fill": "$accent",
+                                  "stroke": "$border",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "ZleXA",
+                                      "name": "Mira Chen Marker Icon",
+                                      "width": 13,
+                                      "height": 13,
+                                      "icon": "user",
+                                      "library": "lucide",
+                                      "fill": "$primary"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "ItSNU",
+                                  "name": "Mira Chen Event Copy",
+                                  "width": "fill_container",
+                                  "layout": "vertical",
+                                  "gap": 3,
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "PQQns",
+                                      "name": "Mira Chen Event Header",
+                                      "width": "fill_container",
+                                      "justifyContent": "space_between",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "L0Dt2d",
+                                          "name": "Mira Chen Event Name",
+                                          "fill": "$foreground",
+                                          "content": "Mira Chen · HUMAN · OWNER",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 10,
+                                          "fontWeight": "600"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "WWb5F",
+                                          "name": "Mira Chen Event Time",
+                                          "fill": "$muted-foreground",
+                                          "content": "Today 14:32",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "d9ES0",
+                                      "name": "Mira Chen Event Reason",
+                                      "fill": "$muted-foreground",
+                                      "content": "Accepted handoff from AI",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "zaPU4",
+                              "name": "AIF Agent Timeline Event",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "gap": 10,
+                              "padding": [
+                                10,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "KVqwT",
+                                  "name": "AIF Agent Timeline Marker",
+                                  "width": 26,
+                                  "height": 26,
+                                  "fill": "$muted",
+                                  "stroke": "$border",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "GJJAH",
+                                      "name": "AIF Agent Marker Icon",
+                                      "width": 13,
+                                      "height": 13,
+                                      "icon": "bot",
+                                      "library": "lucide",
+                                      "fill": "$muted-foreground"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "aUvHL",
+                                  "name": "AIF Agent Event Copy",
+                                  "width": "fill_container",
+                                  "layout": "vertical",
+                                  "gap": 3,
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "FZ49t",
+                                      "name": "AIF Agent Event Header",
+                                      "width": "fill_container",
+                                      "justifyContent": "space_between",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "hcQ9L",
+                                          "name": "AIF Agent Event Name",
+                                          "fill": "$foreground",
+                                          "content": "AIF Agent · AI · EXECUTOR",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 10,
+                                          "fontWeight": "600"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "KMDch",
+                                          "name": "AIF Agent Event Time",
+                                          "fill": "$muted-foreground",
+                                          "content": "Today 13:08",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "JL7E9",
+                                      "name": "AIF Agent Event Reason",
+                                      "fill": "$muted-foreground",
+                                      "content": "Paused for human input",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "mzuL3",
+                              "name": "Noah Ruiz Timeline Event",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "gap": 10,
+                              "padding": [
+                                10,
+                                0
+                              ],
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "lXB62",
+                                  "name": "Noah Ruiz Timeline Marker",
+                                  "width": 26,
+                                  "height": 26,
+                                  "fill": "$muted",
+                                  "stroke": "$border",
+                                  "strokeWidth": 1,
+                                  "strokeAlignment": "inner",
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "Dyyo5",
+                                      "name": "Noah Ruiz Marker Icon",
+                                      "width": 13,
+                                      "height": 13,
+                                      "icon": "user",
+                                      "library": "lucide",
+                                      "fill": "$muted-foreground"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "q1SDV",
+                                  "name": "Noah Ruiz Event Copy",
+                                  "width": "fill_container",
+                                  "layout": "vertical",
+                                  "gap": 3,
+                                  "children": [
+                                    {
+                                      "type": "frame",
+                                      "id": "TsZhD",
+                                      "name": "Noah Ruiz Event Header",
+                                      "width": "fill_container",
+                                      "justifyContent": "space_between",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "id": "TCfly",
+                                          "name": "Noah Ruiz Event Name",
+                                          "fill": "$foreground",
+                                          "content": "Noah Ruiz · HUMAN · ASSIGNEE",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 10,
+                                          "fontWeight": "600"
+                                        },
+                                        {
+                                          "type": "text",
+                                          "id": "bdtLQ",
+                                          "name": "Noah Ruiz Event Time",
+                                          "fill": "$muted-foreground",
+                                          "content": "Yesterday 18:41",
+                                          "fontFamily": "IBM Plex Mono",
+                                          "fontSize": 9,
+                                          "fontWeight": "normal"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "j9sufo",
+                                      "name": "Noah Ruiz Event Reason",
+                                      "fill": "$muted-foreground",
+                                      "content": "Initial manual assignment",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Gtw3h",
+                          "name": "Executor Timeline States",
+                          "width": "fill_container",
+                          "gap": 10,
+                          "children": [
+                            {
+                              "id": "C49flE",
+                              "type": "ref",
+                              "ref": "AwohF",
+                              "name": "Executor Empty State",
+                              "width": "fill_container",
+                              "descendants": {
+                                "3sJkD": {
+                                  "icon": "users"
+                                },
+                                "6fA2M": {
+                                  "content": "No executor history yet"
+                                }
+                              }
+                            },
+                            {
+                              "type": "frame",
+                              "id": "xa3vY",
+                              "name": "Revision Conflict State",
+                              "width": "fill_container",
+                              "fill": "$muted",
+                              "stroke": "$warning",
+                              "strokeWidth": 1,
+                              "strokeAlignment": "inner",
+                              "gap": 8,
+                              "padding": 12,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "pvVue",
+                                  "name": "Conflict Warning Icon",
+                                  "width": 16,
+                                  "height": 16,
+                                  "icon": "triangle-alert",
+                                  "library": "lucide",
+                                  "fill": "$warning"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "kh0U8",
+                                  "name": "Conflict Warning Text",
+                                  "fill": "$warning-foreground",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Ownership changed. Refresh and retry with revision 5.",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "y7naE",
+              "name": "Participant Interface States",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "nlL6Z",
+                  "name": "Participant States Title",
+                  "fill": "$foreground",
+                  "content": "Participant interface states",
+                  "fontFamily": "IBM Plex Mono",
+                  "fontSize": 14,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "text",
+                  "id": "xUugf",
+                  "name": "Participant States Description",
+                  "fill": "$muted-foreground",
+                  "content": "Account actions, participant creation, role updates, and self-service credentials.",
+                  "fontFamily": "IBM Plex Mono",
+                  "fontSize": 11,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "frame",
+                  "id": "R4uSQT",
+                  "name": "Participant States Row One",
+                  "width": "fill_container",
+                  "gap": 20,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "J8igGK",
+                      "name": "Identity Menu State",
+                      "width": "fill_container",
+                      "fill": "$card",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "fqemH",
+                          "name": "Identity Menu Title",
+                          "fill": "$foreground",
+                          "content": "Identity menu",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ECXbR",
+                          "name": "Identity Menu Description",
+                          "fill": "$muted-foreground",
+                          "content": "Available to both members and administrators.",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "eoXsl",
+                          "name": "Participant Menu Trigger",
+                          "fill": "$card",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "gap": 8,
+                          "padding": [
+                            6,
+                            8
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "agGt8",
+                              "name": "Participant Menu Avatar",
+                              "width": 24,
+                              "height": 24,
+                              "fill": "$muted",
+                              "cornerRadius": 12,
+                              "stroke": "$border",
+                              "strokeWidth": 1,
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Zana8",
+                                  "name": "Participant Initial",
+                                  "fill": "$muted-foreground",
+                                  "content": "M",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "v9s49X",
+                              "name": "Participant Menu Name",
+                              "fill": "$foreground",
+                              "content": "Mira Chen",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 11,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "W3aNpK",
+                              "name": "Participant Menu Role",
+                              "fill": "$primary",
+                              "content": "ADMIN",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 9,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "icon",
+                              "id": "msAtR",
+                              "name": "Participant Menu Chevron",
+                              "width": 12,
+                              "height": 12,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$muted-foreground"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "DrTHg",
+                          "name": "Participant Menu Panel",
+                          "width": 280,
+                          "fill": "$popover",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "layout": "vertical",
+                          "padding": [
+                            4,
+                            0
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "IOn4i",
+                              "name": "Participant Menu Header",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 2,
+                              "padding": [
+                                8,
+                                10
+                              ],
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "ks81n",
+                                  "name": "Participant Menu Header Name",
+                                  "fill": "$popover-foreground",
+                                  "content": "Mira Chen",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "600"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "wGseN",
+                                  "name": "Participant Menu Header Status",
+                                  "fill": "$muted-foreground",
+                                  "content": "ACTIVE PARTICIPANT",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 9,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "rectangle",
+                              "id": "koY6R",
+                              "name": "Participant Menu Divider",
+                              "fill": "$border",
+                              "width": "fill_container",
+                              "height": 1
+                            },
+                            {
+                              "type": "frame",
+                              "id": "fiIEa",
+                              "name": "Manage participants Menu Item",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "padding": [
+                                7,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "TYu1U",
+                                  "name": "Manage participants Icon",
+                                  "width": 14,
+                                  "height": 14,
+                                  "icon": "users",
+                                  "library": "lucide",
+                                  "fill": "$popover-foreground"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "cLrBR",
+                                  "name": "Manage participants Label",
+                                  "fill": "$popover-foreground",
+                                  "content": "Manage participants",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "emBPk",
+                              "name": "Change password Menu Item",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "padding": [
+                                7,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "LWDbX",
+                                  "name": "Change password Icon",
+                                  "width": 14,
+                                  "height": 14,
+                                  "icon": "key-round",
+                                  "library": "lucide",
+                                  "fill": "$popover-foreground"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "E8pDTJ",
+                                  "name": "Change password Label",
+                                  "fill": "$popover-foreground",
+                                  "content": "Change password",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "d0h2Vj",
+                              "name": "Sign out Menu Item",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "padding": [
+                                7,
+                                10
+                              ],
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "icon",
+                                  "id": "FEck1",
+                                  "name": "Sign out Icon",
+                                  "width": 14,
+                                  "height": 14,
+                                  "icon": "log-out",
+                                  "library": "lucide",
+                                  "fill": "$destructive"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "ljoKF",
+                                  "name": "Sign out Label",
+                                  "fill": "$destructive",
+                                  "content": "Sign out",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "wh49c",
+                      "name": "Create Participant State",
+                      "width": "fill_container",
+                      "fill": "$card",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "SZcH9",
+                          "name": "Create Participant State Title",
+                          "fill": "$foreground",
+                          "content": "Create participant",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "jw5im",
+                          "name": "Create Participant State Description",
+                          "fill": "$muted-foreground",
+                          "content": "Form fields keep a full 16px gap above dialog actions.",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Rrqk3",
+                          "name": "Create Participant Dialog",
+                          "width": "fill_container",
+                          "fill": "$card",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "layout": "vertical",
+                          "gap": 16,
+                          "padding": 24,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "v01uKB",
+                              "name": "Create Participant Dialog Title",
+                              "fill": "$foreground",
+                              "content": "Create participant",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 16,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "NKUEe",
+                              "name": "Username Field",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "ub8Z5",
+                                  "name": "Username Label",
+                                  "fill": "$foreground",
+                                  "content": "Username",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "500"
+                                },
+                                {
+                                  "id": "pscjb",
+                                  "type": "ref",
+                                  "ref": "yA4l7",
+                                  "name": "Username Input",
+                                  "width": "fill_container",
+                                  "descendants": {
+                                    "xAwdW": {
+                                      "content": "noah"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "sGzpO",
+                              "name": "Display name Field",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "dUseI",
+                                  "name": "Display name Label",
+                                  "fill": "$foreground",
+                                  "content": "Display name",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "500"
+                                },
+                                {
+                                  "id": "M8gCOb",
+                                  "type": "ref",
+                                  "ref": "yA4l7",
+                                  "name": "Display name Input",
+                                  "width": "fill_container",
+                                  "descendants": {
+                                    "xAwdW": {
+                                      "content": "Noah Ruiz"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "geOzV",
+                              "name": "Temporary password Field",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "RAPBC",
+                                  "name": "Temporary password Label",
+                                  "fill": "$foreground",
+                                  "content": "Temporary password",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "500"
+                                },
+                                {
+                                  "id": "QJKtd",
+                                  "type": "ref",
+                                  "ref": "yA4l7",
+                                  "name": "Temporary password Input",
+                                  "width": "fill_container",
+                                  "descendants": {
+                                    "xAwdW": {
+                                      "content": "••••••••••••"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "degwB",
+                              "name": "Create Role Field",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "iirj7",
+                                  "name": "Create Role Label",
+                                  "fill": "$foreground",
+                                  "content": "Role",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "500"
+                                },
+                                {
+                                  "id": "qHc2M",
+                                  "type": "ref",
+                                  "ref": "7pP0Z",
+                                  "name": "Create Role Select",
+                                  "width": "fill_container",
+                                  "descendants": {
+                                    "buDKt": {
+                                      "content": "Member"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "vviOa",
+                              "name": "Create Participant Actions",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "justifyContent": "end",
+                              "children": [
+                                {
+                                  "id": "U5djs4",
+                                  "type": "ref",
+                                  "ref": "kLoW9",
+                                  "name": "Create Participant Cancel",
+                                  "descendants": {
+                                    "aTVi9": {
+                                      "content": "Cancel"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "Vulqc",
+                                  "type": "ref",
+                                  "ref": "3CI7c",
+                                  "name": "Create Participant Submit",
+                                  "descendants": {
+                                    "wMRLg": {
+                                      "content": "Create"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "WiaCQ",
+                  "name": "Participant States Row Two",
+                  "width": "fill_container",
+                  "gap": 20,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "SdMvC",
+                      "name": "Role Selector Portal State",
+                      "width": "fill_container",
+                      "fill": "$card",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "x9D9CM",
+                          "name": "Role Selector State Title",
+                          "fill": "$foreground",
+                          "content": "Role selector",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ASXKF",
+                          "name": "Role Selector State Description",
+                          "fill": "$muted-foreground",
+                          "content": "The open menu is a viewport overlay, outside the table scroll container.",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Oz9x1",
+                          "name": "Participant Role Table",
+                          "clip": true,
+                          "width": "fill_container",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "layout": "vertical",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "teXJF",
+                              "name": "Participant Role Header",
+                              "width": "fill_container",
+                              "fill": "$muted",
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "gie4s",
+                                  "name": "Participant Header Cell",
+                                  "width": "fill_container",
+                                  "height": 36,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "fvQ62",
+                                      "name": "Participant Header Label",
+                                      "fill": "$muted-foreground",
+                                      "content": "Participant",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "JPAm6",
+                                  "name": "Role Header Cell",
+                                  "width": 160,
+                                  "height": 36,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "ncU8D",
+                                      "name": "Role Header Label",
+                                      "fill": "$muted-foreground",
+                                      "content": "Role",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "FKp63",
+                                  "name": "Status Header Cell",
+                                  "width": 120,
+                                  "height": 36,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "EP4I0",
+                                      "name": "Status Header Label",
+                                      "fill": "$muted-foreground",
+                                      "content": "Status",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "CwKfs",
+                              "name": "Noah Role Row",
+                              "width": "fill_container",
+                              "stroke": "$border",
+                              "strokeWidth": {
+                                "top": 1
+                              },
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "UD9dz",
+                                  "name": "Noah Participant Cell",
+                                  "width": "fill_container",
+                                  "height": 52,
+                                  "layout": "vertical",
+                                  "gap": 2,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "justifyContent": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "i3BNnk",
+                                      "name": "Noah Participant Name",
+                                      "fill": "$foreground",
+                                      "content": "Noah Ruiz",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 11,
+                                      "fontWeight": "500"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "tK6IF",
+                                      "name": "Noah Participant Username",
+                                      "fill": "$muted-foreground",
+                                      "content": "@noah",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "RHc9f",
+                                  "name": "Noah Role Selector Cell",
+                                  "width": 160,
+                                  "height": 52,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "id": "k2xVPd",
+                                      "type": "ref",
+                                      "ref": "7pP0Z",
+                                      "name": "Noah Role Select Trigger",
+                                      "width": "fill_container",
+                                      "descendants": {
+                                        "buDKt": {
+                                          "content": "Member"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "J4SAm",
+                                  "name": "Noah Status Cell",
+                                  "width": 120,
+                                  "height": 52,
+                                  "padding": [
+                                    0,
+                                    10
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "ktJzW",
+                                      "name": "Noah Active Status",
+                                      "fill": "$success",
+                                      "content": "● Active",
+                                      "fontFamily": "IBM Plex Mono",
+                                      "fontSize": 10,
+                                      "fontWeight": "normal"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "Wy7F1",
+                          "name": "Role Portal Layer Label",
+                          "fill": "$primary",
+                          "content": "PORTAL LAYER · TABLE SCROLL UNCHANGED",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 9,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "id": "NtinK",
+                          "type": "ref",
+                          "ref": "K5sXB",
+                          "name": "Open Role Selector Portal",
+                          "width": 160,
+                          "descendants": {
+                            "SKPVU": {
+                              "content": "Member"
+                            },
+                            "gz3AQ": {
+                              "effect": []
+                            },
+                            "3Fqj2": {
+                              "content": "Member"
+                            },
+                            "ZSVhE": {
+                              "content": "Admin"
+                            },
+                            "gGroq": {
+                              "enabled": false,
+                              "width": 160
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "hvQr0",
+                      "name": "Change Password State",
+                      "width": "fill_container",
+                      "fill": "$card",
+                      "stroke": "$border",
+                      "strokeWidth": 1,
+                      "strokeAlignment": "inner",
+                      "layout": "vertical",
+                      "gap": 12,
+                      "padding": 16,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "HxsLC",
+                          "name": "Change Password State Title",
+                          "fill": "$foreground",
+                          "content": "Change password",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 13,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Tz3kM",
+                          "name": "Change Password State Description",
+                          "fill": "$muted-foreground",
+                          "content": "Self-service for members and administrators; other sessions are revoked.",
+                          "fontFamily": "IBM Plex Mono",
+                          "fontSize": 10,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "frame",
+                          "id": "EiOrt",
+                          "name": "Change Password Dialog",
+                          "width": "fill_container",
+                          "fill": "$card",
+                          "stroke": "$border",
+                          "strokeWidth": 1,
+                          "strokeAlignment": "inner",
+                          "layout": "vertical",
+                          "gap": 16,
+                          "padding": 24,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "nS2eG",
+                              "name": "Change Password Dialog Title",
+                              "fill": "$foreground",
+                              "content": "Change password",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 16,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "TdQ8b",
+                              "name": "Current password Field",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "KBzU5",
+                                  "name": "Current password Label",
+                                  "fill": "$foreground",
+                                  "content": "Current password",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "500"
+                                },
+                                {
+                                  "id": "h97Vb",
+                                  "type": "ref",
+                                  "ref": "yA4l7",
+                                  "name": "Current password Input",
+                                  "width": "fill_container",
+                                  "descendants": {
+                                    "xAwdW": {
+                                      "content": "••••••••••••"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "yzYgk",
+                              "name": "New password Field",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "BfLkS",
+                                  "name": "New password Label",
+                                  "fill": "$foreground",
+                                  "content": "New password",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "500"
+                                },
+                                {
+                                  "id": "MuC6A",
+                                  "type": "ref",
+                                  "ref": "yA4l7",
+                                  "name": "New password Input",
+                                  "width": "fill_container",
+                                  "descendants": {
+                                    "xAwdW": {
+                                      "content": "••••••••••••"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "m0ixMx",
+                              "name": "Password Help",
+                              "fill": "$muted-foreground",
+                              "content": "At least 12 characters. Other sessions will be signed out.",
+                              "fontFamily": "IBM Plex Mono",
+                              "fontSize": 9,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "frame",
+                              "id": "B1L5Hv",
+                              "name": "Confirm new password Field",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 6,
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "XK0jC",
+                                  "name": "Confirm new password Label",
+                                  "fill": "$foreground",
+                                  "content": "Confirm new password",
+                                  "fontFamily": "IBM Plex Mono",
+                                  "fontSize": 11,
+                                  "fontWeight": "500"
+                                },
+                                {
+                                  "id": "bceYI",
+                                  "type": "ref",
+                                  "ref": "yA4l7",
+                                  "name": "Confirm new password Input",
+                                  "width": "fill_container",
+                                  "descendants": {
+                                    "xAwdW": {
+                                      "content": "••••••••••••"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "YrwVH",
+                              "name": "Change Password Actions",
+                              "width": "fill_container",
+                              "gap": 8,
+                              "justifyContent": "end",
+                              "children": [
+                                {
+                                  "id": "YlaDW",
+                                  "type": "ref",
+                                  "ref": "kLoW9",
+                                  "name": "Change Password Cancel",
+                                  "descendants": {
+                                    "aTVi9": {
+                                      "content": "Cancel"
+                                    }
+                                  }
+                                },
+                                {
+                                  "id": "x5EZLc",
+                                  "type": "ref",
+                                  "ref": "3CI7c",
+                                  "name": "Change Password Submit",
+                                  "descendants": {
+                                    "wMRLg": {
+                                      "content": "Change password"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "themes": {
