@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useTask, useRunQa } from "@/hooks/useTasks";
 import { useQaPipelineEnabled } from "@/hooks/useSettings";
@@ -81,11 +82,59 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   <Section title="Description">
                     <TaskDescription
                       description={task.description}
+                      readOnly={Boolean(task.github)}
                       onSave={(description) =>
                         actions.updateTask.mutate({ id: task.id, input: { description } })
                       }
                     />
                   </Section>
+
+                  {task.github && (
+                    <Section title="GitHub">
+                      <div className="space-y-2 text-sm">
+                        <a
+                          href={task.github.htmlUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary underline underline-offset-2"
+                        >
+                          Issue #{task.github.issueNumber}
+                        </a>
+                        {task.github.prUrl && (
+                          <div>
+                            <a
+                              href={task.github.prUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary underline underline-offset-2"
+                            >
+                              Pull request #{task.github.prNumber}
+                            </a>
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          <Badge variant="outline" size="sm">
+                            issue: {task.github.state}
+                          </Badge>
+                          {task.github.prState && (
+                            <Badge variant="outline" size="sm">
+                              PR: {task.github.prState}
+                            </Badge>
+                          )}
+                          {task.github.prChecksStatus && (
+                            <Badge variant="outline" size="sm">
+                              checks: {task.github.prChecksStatus}
+                            </Badge>
+                          )}
+                          {task.github.reviewState && (
+                            <Badge variant="outline" size="sm">
+                              review: {task.github.reviewState}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </Section>
+                  )}
 
                   <Section title="Attachments">
                     <TaskAttachments

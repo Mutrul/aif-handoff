@@ -82,6 +82,32 @@ Node packages (`@aif/api`, `@aif/agent`, `@aif/data`, `@aif/shared`) auto-load e
 
 Environment validation is handled by Zod in `packages/shared/src/env.ts`. The application will fail to start with a descriptive error if required variables are invalid.
 
+## GitHub Issue-to-PR Mode
+
+Configure a repository from **Edit Project → GitHub Issue-to-PR**. The connection stores
+`owner/name`, eligibility filters, and an environment-variable name; it never stores the
+token. `GITHUB_TOKEN` is the default variable and is inherited by Docker services through
+the existing `.env` file. Custom names must use the uppercase `GITHUB_*` prefix so this
+integration cannot forward unrelated application secrets to GitHub.
+
+Use a fine-grained token limited to the connected repository with these permissions:
+
+- Metadata: read
+- Issues: read and write
+- Pull requests: read and write
+- Contents: read and write
+
+The API token creates/updates PRs and review comments. Git push uses the repository's
+normal Git credentials, so native installs must also configure the `origin` remote for
+non-interactive push; Docker deployments should provide a usable HTTPS credential helper
+or SSH key. `INTERNAL_BROADCAST_TOKEN` authorizes the agent's internal sync/publication
+requests when Participants Mode is enabled.
+
+Eligibility is an AND filter: every configured label must be present, and the optional
+assignee and milestone must match. With no filters, all open issues are eligible. Sync is
+idempotent by project plus issue number and updates the existing task instead of importing
+duplicates.
+
 ## Frontend Request Timeouts
 
 The web UI (`@aif/web`) uses named timeout constants for HTTP requests to the API server. All constants are defined in `packages/web/src/lib/api.ts`:

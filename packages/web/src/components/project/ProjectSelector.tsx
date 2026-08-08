@@ -9,7 +9,16 @@ import {
 } from "react";
 import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useQuery } from "@tanstack/react-query";
-import { FolderOpen, Plus, ChevronDown, Pencil, Trash2, Plug, Pin } from "lucide-react";
+import {
+  FolderOpen,
+  Plus,
+  ChevronDown,
+  Pencil,
+  Trash2,
+  Plug,
+  Pin,
+  GitPullRequest,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +41,10 @@ import {
   useSetAutoQueueMode,
   useProjectTaskOverviews,
   useUpdateProjectOrganization,
+  useProjectGitHub,
+  useConnectProjectGitHub,
+  useDisconnectProjectGitHub,
+  useSyncProjectGitHub,
 } from "@/hooks/useProjects";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
@@ -54,6 +67,9 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
   const deleteProject = useDeleteProject();
   const setAutoQueue = useSetAutoQueueMode();
   const updateOrganization = useUpdateProjectOrganization();
+  const connectGitHub = useConnectProjectGitHub();
+  const disconnectGitHub = useDisconnectProjectGitHub();
+  const syncGitHub = useSyncProjectGitHub();
   const { toast } = useToast();
 
   const showMutationError = (error: unknown, fallback: string) => {
@@ -75,6 +91,11 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
   const [reviewSidecarMaxBudgetUsd, setReviewSidecarMaxBudgetUsd] = useState("");
   const [parallelEnabled, setParallelEnabled] = useState(false);
   const [autoQueueMode, setAutoQueueModeState] = useState(false);
+  const [githubRepository, setGitHubRepository] = useState("");
+  const [githubTokenEnvVar, setGitHubTokenEnvVar] = useState("GITHUB_TOKEN");
+  const [githubLabels, setGitHubLabels] = useState("");
+  const [githubAssignee, setGitHubAssignee] = useState("");
+  const [githubMilestone, setGitHubMilestone] = useState("");
   const selectorRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -150,6 +171,10 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
   }
   const projectOptionId = (projectId: string) => `${listboxId}-option-${projectId}`;
   const isEditDialogOpen = dialogOpen && dialogMode === "edit" && !!editingId;
+  const { data: githubData, isLoading: isGitHubLoading } = useProjectGitHub(
+    editingId,
+    isEditDialogOpen,
+  );
   const { data: mcpData, isLoading: isMcpLoading } = useQuery({
     queryKey: ["project-mcp", editingId],
     queryFn: () => api.getProjectMcp(editingId!),
@@ -157,6 +182,20 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
     staleTime: 30_000,
   });
   const mcpServers = mcpData?.mcpServers ? Object.keys(mcpData.mcpServers) : [];
+  const githubConnection = githubData?.connection ?? null;
+
+  useEffect(() => {
+    if (!isEditDialogOpen || !githubData) return;
+    const connection = githubData.connection;
+    const timeout = window.setTimeout(() => {
+      setGitHubRepository(connection ? `${connection.owner}/${connection.name}` : "");
+      setGitHubTokenEnvVar(connection?.tokenEnvVar ?? "GITHUB_TOKEN");
+      setGitHubLabels(connection?.eligibility.labels.join(", ") ?? "");
+      setGitHubAssignee(connection?.eligibility.assignee ?? "");
+      setGitHubMilestone(connection?.eligibility.milestone ?? "");
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [githubData, isEditDialogOpen]);
 
   const openCreate = () => {
     if (!canManage) return;
@@ -171,6 +210,11 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
     setReviewSidecarMaxBudgetUsd("");
     setParallelEnabled(false);
     setAutoQueueModeState(false);
+    setGitHubRepository("");
+    setGitHubTokenEnvVar("GITHUB_TOKEN");
+    setGitHubLabels("");
+    setGitHubAssignee("");
+    setGitHubMilestone("");
     setDropdownOpen(false);
     setProjectQuery("");
     setActiveProjectId(null);
@@ -197,6 +241,11 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
     );
     setParallelEnabled(p.parallelEnabled ?? false);
     setAutoQueueModeState(p.autoQueueMode ?? false);
+    setGitHubRepository("");
+    setGitHubTokenEnvVar("GITHUB_TOKEN");
+    setGitHubLabels("");
+    setGitHubAssignee("");
+    setGitHubMilestone("");
     setDropdownOpen(false);
     setProjectQuery("");
     setActiveProjectId(null);
@@ -211,6 +260,52 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
       onSuccess: () => {
         if (selectedId === p.id) onDeselect();
       },
+    });
+  };
+
+  const handleConnectGitHub = () => {
+    if (!editingId || !githubRepository.trim() || !githubTokenEnvVar.trim()) return;
+    connectGitHub.mutate(
+      {
+        id: editingId,
+        input: {
+          repository: githubRepository.trim(),
+          tokenEnvVar: githubTokenEnvVar.trim(),
+          enabled: true,
+          eligibility: {
+            labels: githubLabels
+              .split(",")
+              .map((label) => label.trim())
+              .filter(Boolean),
+            assignee: githubAssignee.trim() || null,
+            milestone: githubMilestone.trim() || null,
+          },
+        },
+      },
+      {
+        onSuccess: () => toast("GitHub repository connected", "success"),
+        onError: (error) => showMutationError(error, "Failed to connect GitHub repository"),
+      },
+    );
+  };
+
+  const handleSyncGitHub = () => {
+    if (!editingId) return;
+    syncGitHub.mutate(editingId, {
+      onSuccess: (result) =>
+        toast(
+          `GitHub sync complete: ${result.imported} imported, ${result.updated} updated`,
+          "success",
+        ),
+      onError: (error) => showMutationError(error, "Failed to synchronize GitHub repository"),
+    });
+  };
+
+  const handleDisconnectGitHub = () => {
+    if (!editingId) return;
+    disconnectGitHub.mutate(editingId, {
+      onSuccess: () => toast("GitHub repository disconnected", "success"),
+      onError: (error) => showMutationError(error, "Failed to disconnect GitHub repository"),
     });
   };
 
@@ -594,6 +689,109 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
                 PROJECTS_MOUNT; host paths under PROJECTS_DIR use the same mount.
               </p>
             </div>
+            {dialogMode === "edit" && (
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-1.5 text-sm font-medium">
+                    <GitPullRequest className="h-3.5 w-3.5" />
+                    GitHub Issue-to-PR
+                  </label>
+                  {githubConnection && (
+                    <Badge variant="outline" size="sm">
+                      {githubConnection.tokenConfigured ? "Connected" : "Token missing"}
+                    </Badge>
+                  )}
+                </div>
+                <div className="space-y-2 border border-border bg-card/50 p-3">
+                  {isGitHubLoading ? (
+                    <p className="text-xs text-muted-foreground">Loading GitHub settings...</p>
+                  ) : (
+                    <>
+                      <Input
+                        placeholder="owner/repository"
+                        aria-label="GitHub repository"
+                        value={githubRepository}
+                        onChange={(event) => setGitHubRepository(event.target.value)}
+                      />
+                      <Input
+                        placeholder="GITHUB_TOKEN"
+                        aria-label="GitHub token environment variable"
+                        className="font-mono text-sm"
+                        value={githubTokenEnvVar}
+                        onChange={(event) => setGitHubTokenEnvVar(event.target.value)}
+                      />
+                      <Input
+                        placeholder="Required labels, comma-separated"
+                        aria-label="GitHub issue labels"
+                        value={githubLabels}
+                        onChange={(event) => setGitHubLabels(event.target.value)}
+                      />
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Input
+                          placeholder="Assignee (optional)"
+                          aria-label="GitHub issue assignee"
+                          value={githubAssignee}
+                          onChange={(event) => setGitHubAssignee(event.target.value)}
+                        />
+                        <Input
+                          placeholder="Milestone (optional)"
+                          aria-label="GitHub issue milestone"
+                          value={githubMilestone}
+                          onChange={(event) => setGitHubMilestone(event.target.value)}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        The server reads the token from this environment variable; the token is
+                        never stored in the database.
+                      </p>
+                      {githubConnection?.syncError && (
+                        <p className="text-xs text-destructive">{githubConnection.syncError}</p>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleConnectGitHub}
+                          disabled={
+                            connectGitHub.isPending ||
+                            !githubRepository.trim() ||
+                            !githubTokenEnvVar.trim()
+                          }
+                        >
+                          {connectGitHub.isPending
+                            ? "Connecting..."
+                            : githubConnection
+                              ? "Update connection"
+                              : "Connect"}
+                        </Button>
+                        {githubConnection && (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={handleSyncGitHub}
+                              disabled={syncGitHub.isPending}
+                            >
+                              {syncGitHub.isPending ? "Syncing..." : "Sync now"}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={handleDisconnectGitHub}
+                              disabled={disconnectGitHub.isPending}
+                            >
+                              Disconnect
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
             {dialogMode === "edit" && (
               <div>
                 <label className="text-sm font-medium">Group</label>

@@ -61,6 +61,7 @@ import { classifyStageError } from "./stageErrorHandler.js";
 import { setActiveStageAbortController } from "./stageAbort.js";
 import { setCoordinatorId } from "./subagentQuery.js";
 import { ensureAutoQueueTaskCommit } from "./autoQueueCommit.js";
+import { publishGitHubTask, synchronizeGitHubProjects } from "./githubWorkflow.js";
 import {
   getRandomBackoffMinutes,
   releaseDueBlockedTasks,
@@ -590,6 +591,11 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
 
     flushActivityQueue(task.id);
 
+    if (stage.label === "implementer") {
+      await publishGitHubTask(task.id, project.rootPath);
+      flushActivityQueue(task.id);
+    }
+
     if (stage.label === "implementer" && task.skipReview) {
       clearTaskActiveRuntimeSelection(task.id);
       clearTaskRuntimeLimitSnapshot(task.id);
@@ -615,6 +621,8 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
         taskId: task.id,
         projectRoot: task.worktreePath ?? project.rootPath,
       });
+      await publishGitHubTask(task.id, project.rootPath);
+      flushActivityQueue(task.id);
 
       if (outcome?.status === "manual_review_required") {
         clearTaskActiveRuntimeSelection(task.id);
@@ -686,6 +694,11 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
             reviewIterationCount: outcome.currentIteration,
             manualReviewRequired: false,
             autoReviewState: outcome.autoReviewState,
+            autoQueueCommitStatus: "pending",
+            autoQueueCommitBaseSha: findTaskById(task.id)?.commitSha ?? null,
+            commitSha: null,
+            autoQueueCommitError: null,
+            autoQueueCommitCompletedAt: null,
           },
           { title: taskTitle, fromStatus: stage.inProgress },
         );
@@ -1045,6 +1058,7 @@ async function runPollCycle(): Promise<void> {
   releaseDueBlockedTasks();
   recoverStaleInProgressTasks();
   processDueScheduledTasks();
+  await synchronizeGitHubProjects();
   processAutoQueueAdvance();
 
   const maxProjectLanes = env.COORDINATOR_MAX_CONCURRENT_PROJECTS;

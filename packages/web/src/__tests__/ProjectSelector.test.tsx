@@ -8,6 +8,9 @@ const mutateUpdateProject = vi.fn();
 const mutateDeleteProject = vi.fn();
 const mutateSetAutoQueue = vi.fn();
 const mutateUpdateOrganization = vi.fn();
+const mutateConnectGitHub = vi.fn();
+const mutateDisconnectGitHub = vi.fn();
+const mutateSyncGitHub = vi.fn();
 const mockToast = vi.fn();
 let mockProjects = [
   {
@@ -53,6 +56,10 @@ vi.mock("@/hooks/useProjects", () => ({
     mutate: mutateUpdateOrganization,
     isPending: false,
   }),
+  useProjectGitHub: () => ({ data: { connection: null, issues: [] }, isLoading: false }),
+  useConnectProjectGitHub: () => ({ mutate: mutateConnectGitHub, isPending: false }),
+  useDisconnectProjectGitHub: () => ({ mutate: mutateDisconnectGitHub, isPending: false }),
+  useSyncProjectGitHub: () => ({ mutate: mutateSyncGitHub, isPending: false }),
 }));
 
 vi.mock("@/components/ui/toast", () => ({
@@ -70,6 +77,9 @@ describe("ProjectSelector", () => {
     mutateDeleteProject.mockReset();
     mutateSetAutoQueue.mockReset();
     mutateUpdateOrganization.mockReset();
+    mutateConnectGitHub.mockReset();
+    mutateDisconnectGitHub.mockReset();
+    mutateSyncGitHub.mockReset();
     mockToast.mockReset();
     mockProjects = [
       {

@@ -135,6 +135,34 @@ Implementing ──[runPostVerify]──► Verify ──► Review
 | Implementing → Verify → Review / Done                                                            | `/aif-verify`                                                             | Optional skills-mode implementation verification against the plan before review. Enabled per task with `runPostVerify`; ignored when `useSubagents=true` |
 | Review → Done / Review → request_changes → Implementing / Review → Done + manual review required | `review-sidecar` + `security-sidecar` (+ auto review gate in coordinator) | Code review and security audit in parallel; in auto mode, structured blocking findings drive automatic rework until success or explicit manual handoff   |
 
+### GitHub Issue-to-PR Workflow
+
+One optional GitHub repository connection belongs to a project. The API periodically reads
+eligible issues and atomically maps `(project_id, issue_number)` to one full-mode task. Issue
+title, body, labels, assignees, milestone, comments, state, and source timestamps remain a
+refreshable snapshot; the task description is read-only in the UI.
+
+```text
+GitHub issue → sync/dedupe → task → isolated worktree/branch → commit + push
+      ↑                                                        │
+      └── changes requested ← same task/PR ← automated review ← PR publish/update
+                                                               │
+                                     human merge → Done → Verified
+```
+
+GitHub tasks always use a persisted per-task worktree when Git supports it, independent of
+the general parallel-worktree rollout flag. The agent never embeds a token in Git commands:
+push uses configured Git credentials, while PR operations go through the authenticated
+internal API. PR creation tolerates restart races by looking up the branch after GitHub's
+duplicate-validation response, and review comments are fingerprinted to avoid duplicates.
+
+`Done` is the terminal **PR ready for human decision** state in this mode. The coordinator
+never merges and the web UI does not offer local approve/request-change actions for these
+tasks. GitHub sync alone moves a merged PR to `Verified` or resumes the same task and branch
+at `Implementing` after a new changes-requested review. Authentication/access failures,
+rate limits, push failures, closed issues, closed unmerged PRs, and unavailable API services
+are surfaced or paused without creating a second task or PR.
+
 ### Reliability Guards
 
 The pipeline includes four reliability layers for long-running autonomous execution:
@@ -463,6 +491,8 @@ SQLite via `better-sqlite3` with `drizzle-orm` for type-safe queries. Schema is 
 Key tables:
 
 - **tasks** — task data, status, plan/logs, heartbeat metadata, runtime override fields (`runtime_profile_id`, `model_override`, `runtime_options_json`), runtime session id (`session_id`), internal stage-scoped runtime retry pin (`active_runtime_status`, `active_runtime_selection_json`), auto-review convergence state (`manual_review_required`, `auto_review_state_json`), and task-level runtime-limit copy (`runtime_limit_snapshot_json`, `runtime_limit_updated_at`). The active runtime fields are distinct from `session_id` and `runtime_limit_snapshot_json`; they store the runtime/profile/model/options selected for same-status retries and are cleared on stage or human transitions except `retry_from_blocked`.
+- **github_repositories** — one non-secret repository connection and eligibility policy per project
+- **github_issues** — idempotent project/issue-to-task mapping plus PR, checks, and review state
 - **runtime_profiles** — project-scoped or global runtime/provider profiles with non-secret transport/model config plus authoritative runtime-limit state (`runtime_limit_snapshot_json`, `runtime_limit_updated_at`)
 - **projects** — project metadata plus default runtime profile ids for tasks and chat
 - **chat_sessions / chat_messages** — persisted chat state with runtime profile/session linkage

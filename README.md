@@ -34,6 +34,7 @@ Need something custom? Add your own runtime adapter module and load it at startu
 - **Self-healing pipeline** — heartbeat + stale-stage watchdog auto-recovers stuck agent stages
 - **Human-in-the-loop** — approve plans, request changes, or let auto-mode handle everything
 - **Participants Mode** — optional local accounts, role-aware collaboration, and explicit Human/AI task ownership
+- **GitHub Issue-to-PR mode** — import eligible issues, implement in isolated worktrees, and keep one human-merged PR per task
 - **MCP sync** — bidirectional task sync between Handoff and AIF tools via Model Context Protocol
 
 ## Quick Start

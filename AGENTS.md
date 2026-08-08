@@ -66,6 +66,7 @@ packages/
 │       ├── index.ts         # Server entry point
 │       ├── routes/          # tasks/projects/chat/runtime profiles plus auth/participants
 │       ├── services/        # runtime.ts, codexIndex.ts, fastFix.ts, roadmapGeneration.ts
+│       │                    # github.ts provides the GitHub REST client
 │       ├── middleware/      # logger.ts, rateLimit.ts, zodValidator.ts
 │       ├── schemas.ts       # Zod request validation
 │       └── ws.ts            # WebSocket handler
@@ -93,6 +94,7 @@ packages/
         ├── hooks.ts         # Activity logging, project root
         ├── stderrCollector.ts # Generic stderr ring-buffer
         ├── notifier.ts      # Notification system
+        ├── githubWorkflow.ts # GitHub sync, branch push, and PR publication
         ├── codex/           # Codex login broker (OAuth-in-Docker bridge)
         └── subagents/       # planner.ts, implementer.ts, reviewer.ts
 
