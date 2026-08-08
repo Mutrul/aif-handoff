@@ -11,7 +11,7 @@ vi.mock("@aif/shared/server", async (importOriginal) => {
 
 const { githubRouter } = await import("../routes/github.js");
 const { GitHubClient, issueIsEligible } = await import("../services/github.js");
-const { findGitHubIssue, findTaskById, importGitHubIssueTask, upsertGitHubRepository } =
+const { deleteTask, findGitHubIssue, findTaskById, importGitHubIssueTask, upsertGitHubRepository } =
   await import("@aif/data");
 
 function jsonResponse(value: unknown, init: ResponseInit = {}): Response {
@@ -277,6 +277,125 @@ describe("GitHub project routes", () => {
       });
     },
   );
+
+  it("skips closed orphaned issues and links pull requests to existing tasks", async () => {
+    upsertGitHubRepository({
+      projectId: "project-1",
+      owner: "owner",
+      name: "repo",
+      htmlUrl: "https://github.com/owner/repo",
+      defaultBranch: "main",
+      tokenEnvVar: "GITHUB_TEST_TOKEN",
+      eligibility: { labels: [], assignee: null, milestone: null },
+      enabled: true,
+    });
+    const closed = importGitHubIssueTask({
+      projectId: "project-1",
+      owner: "owner",
+      repository: "repo",
+      issueNumber: 168,
+      nodeId: "I_168",
+      htmlUrl: "https://github.com/owner/repo/issues/168",
+      state: "open",
+      sourceUpdatedAt: "2026-08-07T00:00:00Z",
+      snapshot: {
+        title: "Already completed",
+        body: "Done elsewhere",
+        author: "author",
+        labels: [],
+        assignees: [],
+        milestone: null,
+        comments: [],
+      },
+    });
+    const open = importGitHubIssueTask({
+      projectId: "project-1",
+      owner: "owner",
+      repository: "repo",
+      issueNumber: 154,
+      nodeId: "I_154",
+      htmlUrl: "https://github.com/owner/repo/issues/154",
+      state: "open",
+      sourceUpdatedAt: "2026-08-07T00:00:00Z",
+      snapshot: {
+        title: "GitHub mode",
+        body: "Implement it",
+        author: "author",
+        labels: [],
+        assignees: [],
+        milestone: null,
+        comments: [],
+      },
+    });
+    deleteTask(closed.taskId);
+
+    const pull = {
+      number: 200,
+      html_url: "https://github.com/owner/repo/pull/200",
+      state: "open",
+      merged_at: null,
+      body: "Closes #154",
+      head: { sha: "0123456789abcdef" },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonResponse([
+            {
+              number: 168,
+              node_id: "I_168",
+              html_url: "https://github.com/owner/repo/issues/168",
+              state: "closed",
+              title: "Already completed",
+              body: "Done elsewhere",
+              user: { login: "author" },
+              labels: [],
+              assignees: [],
+              milestone: null,
+              comments: 0,
+              updated_at: "2026-08-08T00:00:00Z",
+            },
+            {
+              number: 154,
+              node_id: "I_154",
+              html_url: "https://github.com/owner/repo/issues/154",
+              state: "open",
+              title: "GitHub mode",
+              body: "Implement it",
+              user: { login: "author" },
+              labels: [],
+              assignees: [],
+              milestone: null,
+              comments: 0,
+              updated_at: "2026-08-08T00:00:00Z",
+            },
+          ]),
+        )
+        .mockResolvedValueOnce(jsonResponse([pull]))
+        .mockResolvedValueOnce(jsonResponse([]))
+        .mockResolvedValueOnce(jsonResponse({ state: "success", total_count: 1, statuses: [{}] }))
+        .mockResolvedValueOnce(jsonResponse({ total_count: 0, check_runs: [] })),
+    );
+    const app = new Hono();
+    app.route("/projects", githubRouter);
+
+    const response = await app.request("/projects/project-1/github/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ imported: 0, updated: 1, skipped: 1 });
+    expect(findGitHubIssue("project-1", 168)?.taskId).toBeNull();
+    expect(findTaskById(closed.taskId)).toBeUndefined();
+    const linked = findGitHubIssue("project-1", 154);
+    expect(linked).toMatchObject({ prNumber: 200, prState: "open" });
+    expect(linked?.taskId).toBe(open.taskId);
+    expect(findTaskById(open.taskId)?.status).toBe("done");
+  });
 
   it("creates one pull request and reuses it on repeated publication", async () => {
     upsertGitHubRepository({

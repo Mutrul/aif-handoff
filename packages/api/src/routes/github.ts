@@ -140,11 +140,12 @@ githubRouter.post("/:id/github/sync", jsonValidator(githubSyncSchema), async (c)
     const existingByNumber = new Map(
       listGitHubIssues(projectId).map((issue) => [issue.issueNumber, issue]),
     );
-    const hasNewEligibleIssues = remoteIssues.some(
+    const hasPullDiscoveryCandidates = remoteIssues.some(
       (issue) =>
-        !existingByNumber.has(issue.number) && issueIsEligible(issue, connection.eligibility),
+        !existingByNumber.get(issue.number)?.prNumber &&
+        issueIsEligible(issue, connection.eligibility),
     );
-    const openPulls = hasNewEligibleIssues
+    const openPulls = hasPullDiscoveryCandidates
       ? await client.listOpenPullRequests(connection.owner, connection.name)
       : [];
     let imported = 0;
@@ -153,11 +154,21 @@ githubRouter.post("/:id/github/sync", jsonValidator(githubSyncSchema), async (c)
     const synchronizedNumbers = new Set<number>();
     for (const issue of remoteIssues) {
       const existing = existingByNumber.get(issue.number);
-      if (!existing && !issueIsEligible(issue, connection.eligibility)) {
+      const eligible = issueIsEligible(issue, connection.eligibility);
+      synchronizedNumbers.add(issue.number);
+      if (!existing?.taskId && !eligible) {
         skipped += 1;
         continue;
       }
-      const closingPull = existing ? null : findPullRequestClosingIssue(openPulls, issue.number);
+      const closingPull = existing?.prNumber
+        ? null
+        : findPullRequestClosingIssue(openPulls, issue.number);
+      if (closingPull) {
+        log.debug(
+          { projectId, issueNumber: issue.number, prNumber: closingPull.number },
+          "GitHub closing pull request discovered",
+        );
+      }
       const snapshot = await toIssueSnapshot(client, connection.owner, connection.name, issue);
       const result = importGitHubIssueTask({
         projectId,
@@ -179,7 +190,6 @@ githubRouter.post("/:id/github/sync", jsonValidator(githubSyncSchema), async (c)
             }
           : {}),
       });
-      synchronizedNumbers.add(issue.number);
       if (result.created) imported += 1;
       else updated += 1;
 
@@ -205,7 +215,18 @@ githubRouter.post("/:id/github/sync", jsonValidator(githubSyncSchema), async (c)
           reviewState: review.state,
           lastReviewId: review.id,
         });
-        const task = findTaskById(result.taskId);
+        let task = findTaskById(result.taskId);
+        const discoveredPullNeedsDone =
+          closingPull && task && task.status !== "done" && task.status !== "verified";
+        if (discoveredPullNeedsDone && task) {
+          updateTaskStatus(
+            task.id,
+            "done",
+            {},
+            { kind: "system", id: "github-sync", displayNameSnapshot: "GitHub Sync" },
+          );
+          task = findTaskById(result.taskId);
+        }
         if (task && prState === "merged" && task.status === "done") {
           updateTaskStatus(
             task.id,
