@@ -76,6 +76,7 @@ describe("env validation", () => {
     expect(result.AIF_RUNTIME_MODEL_EFFORT_DISCOVERY_ENABLED).toBe(false);
     expect(result.AIF_API_NODE_SERVER_V2_WEBSOCKET_ENABLED).toBe(false);
     expect(result.AIF_AGENT_AUTO_QUEUE_COMMIT_GATE_ENABLED).toBe(false);
+    expect(result.AIF_NOTIFICATIONS_PROJECT_NAMES_ENABLED).toBe(false);
     expect(result.PARTICIPANTS_MODE_ENABLED).toBe(false);
     expect(result.PARTICIPANT_SESSION_TTL_SECONDS).toBe(7 * 24 * 60 * 60);
     expect(result.PARTICIPANT_SESSION_COOKIE_NAME).toBe("aif_participant_session");
@@ -120,6 +121,17 @@ describe("env validation", () => {
     expect(validateEnv({ AIF_WARMUP_ENABLED: "1" }).AIF_WARMUP_ENABLED).toBe(true);
     expect(validateEnv({ AIF_WARMUP_ENABLED: "false" }).AIF_WARMUP_ENABLED).toBe(false);
     expect(validateEnv({ AIF_WARMUP_ENABLED: "0" }).AIF_WARMUP_ENABLED).toBe(false);
+  });
+
+  it("should parse the Telegram project-name rollout flag", () => {
+    expect(
+      validateEnv({ AIF_NOTIFICATIONS_PROJECT_NAMES_ENABLED: "true" })
+        .AIF_NOTIFICATIONS_PROJECT_NAMES_ENABLED,
+    ).toBe(true);
+    expect(
+      validateEnv({ AIF_NOTIFICATIONS_PROJECT_NAMES_ENABLED: "false" })
+        .AIF_NOTIFICATIONS_PROJECT_NAMES_ENABLED,
+    ).toBe(false);
   });
 
   it("should parse runtime rollout boolean flags", () => {
