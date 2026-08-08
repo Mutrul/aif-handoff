@@ -296,7 +296,7 @@ export class GitHubClient {
         checkRunCount: checkRuns.length,
         result,
       },
-      "[FIX:154] Combined GitHub commit statuses and check runs",
+      "Combined GitHub commit statuses and check runs",
     );
     return result;
   }

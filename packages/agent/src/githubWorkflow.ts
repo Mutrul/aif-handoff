@@ -31,7 +31,7 @@ async function readFailure(response: Response): Promise<GitHubApiFailure> {
 export async function synchronizeGitHubProjects(now = Date.now()): Promise<void> {
   const env = getEnv();
   if (!env.AIF_GITHUB_ISSUE_PR_ENABLED) {
-    log.debug("[FIX:154] GitHub synchronization skipped because rollout flag is disabled");
+    log.debug("GitHub synchronization skipped because rollout flag is disabled");
     return;
   }
   const baseUrl = env.API_BASE_URL;
@@ -83,7 +83,7 @@ export async function publishGitHubTask(taskId: string, projectRoot: string): Pr
   if (!getEnv().AIF_GITHUB_ISSUE_PR_ENABLED) {
     log.debug(
       { taskId },
-      "[FIX:154] GitHub pull request publication skipped because rollout flag is disabled",
+      "GitHub pull request publication skipped because rollout flag is disabled",
     );
     return false;
   }
