@@ -15,7 +15,7 @@ export interface TaskNotificationInfo {
 type ProjectBroadcastType = "project:auto_queue_mode_changed" | "project:auto_queue_advanced";
 type RuntimeLimitBroadcastType = "project:runtime_limit_updated";
 
-function internalBroadcastHeaders(): Record<string, string> {
+export function internalApiHeaders(): Record<string, string> {
   const token = getEnv().INTERNAL_BROADCAST_TOKEN?.trim() ?? "";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -40,7 +40,7 @@ export async function notifyProjectBroadcast(
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: internalBroadcastHeaders(),
+      headers: internalApiHeaders(),
       body: JSON.stringify({ type, taskId: info.taskId }),
     });
     if (res.ok) {
@@ -67,7 +67,7 @@ export async function notifyProjectRuntimeLimitBroadcast(
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: internalBroadcastHeaders(),
+      headers: internalApiHeaders(),
       body: JSON.stringify({
         type,
         taskId: info.taskId ?? null,
@@ -107,7 +107,7 @@ export async function notifyTaskBroadcast(
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: internalBroadcastHeaders(),
+      headers: internalApiHeaders(),
       body: JSON.stringify({ type }),
     });
 

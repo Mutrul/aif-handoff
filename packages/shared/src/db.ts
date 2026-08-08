@@ -228,6 +228,46 @@ function ensureTables(sqlite: Database.Database): void {
     )
   `);
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS github_repositories (
+      project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+      owner TEXT NOT NULL,
+      name TEXT NOT NULL,
+      html_url TEXT NOT NULL,
+      default_branch TEXT NOT NULL,
+      token_env_var TEXT NOT NULL DEFAULT 'GITHUB_TOKEN',
+      eligibility_json TEXT NOT NULL DEFAULT '{}',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_synced_at TEXT,
+      sync_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    )
+  `);
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS github_issues (
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      issue_number INTEGER NOT NULL,
+      task_id TEXT UNIQUE REFERENCES tasks(id) ON DELETE SET NULL,
+      node_id TEXT NOT NULL,
+      html_url TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('open', 'closed')),
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      source_updated_at TEXT NOT NULL,
+      last_synced_at TEXT NOT NULL,
+      sync_error TEXT,
+      pr_number INTEGER,
+      pr_url TEXT,
+      pr_state TEXT CHECK (pr_state IS NULL OR pr_state IN ('open', 'closed', 'merged')),
+      pr_checks_status TEXT CHECK (pr_checks_status IS NULL OR pr_checks_status IN ('pending', 'success', 'failure')),
+      review_state TEXT CHECK (review_state IS NULL OR review_state IN ('pending', 'approved', 'changes_requested')),
+      last_review_id INTEGER,
+      review_fingerprint TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      PRIMARY KEY (project_id, issue_number)
+    )
+  `);
+  sqlite.exec(`
     CREATE TABLE IF NOT EXISTS runtime_profiles (
       id TEXT PRIMARY KEY,
       project_id TEXT,
@@ -1002,6 +1042,48 @@ const MIGRATIONS: Migration[] = [
        END`,
     ],
   },
+  {
+    version: 28,
+    description: "Add restart-safe GitHub repository, issue, and pull-request linkage",
+    sql: `
+      CREATE TABLE IF NOT EXISTS github_repositories (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        owner TEXT NOT NULL,
+        name TEXT NOT NULL,
+        html_url TEXT NOT NULL,
+        default_branch TEXT NOT NULL,
+        token_env_var TEXT NOT NULL DEFAULT 'GITHUB_TOKEN',
+        eligibility_json TEXT NOT NULL DEFAULT '{}',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        last_synced_at TEXT,
+        sync_error TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE TABLE IF NOT EXISTS github_issues (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        issue_number INTEGER NOT NULL,
+        task_id TEXT UNIQUE REFERENCES tasks(id) ON DELETE SET NULL,
+        node_id TEXT NOT NULL,
+        html_url TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('open', 'closed')),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        source_updated_at TEXT NOT NULL,
+        last_synced_at TEXT NOT NULL,
+        sync_error TEXT,
+        pr_number INTEGER,
+        pr_url TEXT,
+        pr_state TEXT CHECK (pr_state IS NULL OR pr_state IN ('open', 'closed', 'merged')),
+        pr_checks_status TEXT CHECK (pr_checks_status IS NULL OR pr_checks_status IN ('pending', 'success', 'failure')),
+        review_state TEXT CHECK (review_state IS NULL OR review_state IN ('pending', 'approved', 'changes_requested')),
+        last_review_id INTEGER,
+        review_fingerprint TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        PRIMARY KEY (project_id, issue_number)
+      );
+    `,
+  },
 ];
 
 function splitSqlStatements(sqlText: string): string[] {
@@ -1266,6 +1348,8 @@ function ensureIndexes(sqlite: Database.Database): void {
     "CREATE INDEX IF NOT EXISTS idx_audit_events_task ON audit_events(task_id, created_at, id)",
     "CREATE INDEX IF NOT EXISTS idx_audit_events_participant ON audit_events(participant_id, created_at, id)",
     "CREATE INDEX IF NOT EXISTS idx_audit_events_actor ON audit_events(actor_kind, actor_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_github_issues_task ON github_issues(task_id)",
+    "CREATE INDEX IF NOT EXISTS idx_github_issues_pr ON github_issues(project_id, pr_number)",
     // Task locking: find unlocked or stale-locked tasks
     "CREATE INDEX IF NOT EXISTS idx_tasks_locked ON tasks(locked_by, locked_until)",
     // Coordinator scheduled-task scan: backlog tasks with due scheduled_at

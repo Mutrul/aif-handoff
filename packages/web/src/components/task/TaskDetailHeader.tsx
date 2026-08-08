@@ -117,11 +117,17 @@ export function TaskDetailHeader({
   onOpenHandoff = () => undefined,
   onClose,
 }: TaskDetailHeaderProps) {
-  const visibleActions = task.permissions
-    ? task.permissions.permittedActions.map((event) => ACTION_BUTTONS_BY_EVENT[event])
-    : (LEGACY_ACTION_BUTTONS_BY_STATUS[task.status] ?? []).filter(
-        (action) => action.visible?.(task) ?? true,
-      );
+  const visibleActions = (
+    task.permissions
+      ? task.permissions.permittedActions.map((event) => ACTION_BUTTONS_BY_EVENT[event])
+      : (LEGACY_ACTION_BUTTONS_BY_STATUS[task.status] ?? []).filter(
+          (action) => action.visible?.(task) ?? true,
+        )
+  ).filter(
+    (action) =>
+      !task.github ||
+      (action.event !== "approve_done" && action.actionType !== "open_request_changes"),
+  );
   const canManageOwnership = Boolean(
     task.permissions?.canAssign || task.permissions?.canHandoff || task.permissions?.canSelfAssign,
   );
@@ -161,6 +167,11 @@ export function TaskDetailHeader({
               className="border-amber-500/35 bg-amber-500/15 text-amber-700 dark:text-amber-300"
             >
               MANUAL REVIEW
+            </Badge>
+          )}
+          {task.github && (
+            <Badge variant="outline" size="sm">
+              GITHUB #{task.github.issueNumber}
             </Badge>
           )}
           {task.paused && (

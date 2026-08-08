@@ -89,6 +89,38 @@ export const createProjectSchema = z.object({
   defaultChatRuntimeProfileId: z.string().min(1).nullable().optional(),
 });
 
+export const githubConnectSchema = z.object({
+  repository: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, "Repository must use owner/name format"),
+  tokenEnvVar: z
+    .string()
+    .trim()
+    .regex(
+      /^GITHUB_[A-Z0-9_]+$/,
+      "tokenEnvVar must be an uppercase GITHUB_* environment variable name",
+    )
+    .default("GITHUB_TOKEN"),
+  enabled: z.boolean().default(true),
+  eligibility: z
+    .object({
+      labels: z.array(z.string().trim().min(1).max(100)).max(20).default([]),
+      assignee: z.string().trim().min(1).max(100).nullable().default(null),
+      milestone: z.string().trim().min(1).max(200).nullable().default(null),
+    })
+    .default({ labels: [], assignee: null, milestone: null }),
+});
+
+export const githubSyncSchema = z.object({});
+
+export const githubPublishSchema = z.object({
+  branch: z.string().trim().min(1).max(250),
+  commitSha: z.string().trim().min(7).max(64).nullable().optional(),
+  implementationLog: z.string().max(100_000).nullable().optional(),
+  reviewComments: z.string().max(100_000).nullable().optional(),
+});
+
 export const updateProjectOrganizationSchema = z
   .object({
     pinned: z.boolean().optional(),

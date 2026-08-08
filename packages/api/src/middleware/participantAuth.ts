@@ -34,9 +34,14 @@ function bearerToken(value: string | undefined): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function isInternalBroadcastPath(method: string, path: string): boolean {
+function isTrustedInternalPath(method: string, path: string): boolean {
   if (method !== "POST") return false;
-  return /^\/tasks\/[^/]+\/broadcast$/.test(path) || /^\/projects\/[^/]+\/broadcast$/.test(path);
+  return (
+    /^\/tasks\/[^/]+\/broadcast$/.test(path) ||
+    /^\/projects\/[^/]+\/broadcast$/.test(path) ||
+    /^\/projects\/[^/]+\/github\/sync$/.test(path) ||
+    /^\/projects\/[^/]+\/github\/tasks\/[^/]+\/publish$/.test(path)
+  );
 }
 
 function isPublicParticipantPath(method: string, path: string): boolean {
@@ -73,7 +78,7 @@ export function createParticipantAuthMiddleware(): MiddlewareHandler<Participant
       return;
     }
 
-    if (isInternalBroadcastPath(c.req.method, c.req.path) && hasTrustedInternalToken(c)) {
+    if (isTrustedInternalPath(c.req.method, c.req.path) && hasTrustedInternalToken(c)) {
       c.set("participantAuth", {
         mode: "internal",
         session: null,

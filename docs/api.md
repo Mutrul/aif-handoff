@@ -684,6 +684,74 @@ Used by API/agent services to trigger project-scoped WebSocket broadcasts withou
 
 ---
 
+## GitHub Issue-to-PR
+
+All endpoints in this section return `403` with `code: "feature_disabled"` unless
+`AIF_GITHUB_ISSUE_PR_ENABLED=true`.
+
+GitHub endpoints use the project connection's token environment variable. Token values are
+never accepted in request bodies or returned in responses.
+
+### Get GitHub State
+
+`GET /projects/:id/github` returns `{ connection, issues }`. The connection includes
+`tokenConfigured` but never the token. Each issue contains its task link and current PR,
+checks, and review state.
+
+### Connect or Disconnect
+
+`PUT /projects/:id/github` validates repository access and stores the connection.
+
+```json
+{
+  "repository": "owner/repository",
+  "tokenEnvVar": "GITHUB_TOKEN",
+  "enabled": true,
+  "eligibility": {
+    "labels": ["aif"],
+    "assignee": null,
+    "milestone": null
+  }
+}
+```
+
+`DELETE /projects/:id/github` removes the connection but preserves already imported tasks
+and issue linkage.
+
+### Synchronize Issues and Pull Requests
+
+`POST /projects/:id/github/sync` with `{}` imports eligible open issues, refreshes linked
+issues/comments, and reconciles PR review/check state. Repeated calls update the same task.
+For a newly imported issue, sync also detects an open PR whose body contains a same-repository
+`Closes`, `Fixes`, or `Resolves #<issue>` reference and creates the linked task directly in
+`done`. If that PR already has an outstanding changes-requested review, the task instead
+resumes at `implementing`. A closed issue pauses its task; an unmerged closed PR also pauses
+it. A later `changes_requested` review resumes the same task at `implementing`; a merged PR
+advances a PR-ready `done` task to `verified`.
+
+### Publish a Task Pull Request
+
+`POST /projects/:id/github/tasks/:taskId/publish` is used by the agent after pushing the
+persisted task branch:
+
+```json
+{
+  "branch": "feature/github-issue-154",
+  "commitSha": "0123456789abcdef",
+  "implementationLog": "Implemented and tested the requested change.",
+  "reviewComments": "Automated review passed."
+}
+```
+
+The endpoint creates or updates one PR containing `Closes #<issue>`, implementation and
+test evidence, and a no-auto-merge notice. Automated review feedback uses one marker
+comment updated only when its fingerprint changes. HTTP failures use structured
+`code`, status, and optional `retryAt` fields for authentication, access, validation, and
+rate-limit recovery. Trusted agent calls to sync/publish may use
+`INTERNAL_BROADCAST_TOKEN`; browser calls use normal participant auth and CSRF rules.
+
+---
+
 ## Runtime Profiles
 
 Runtime profiles carry non-secret transport/model config plus the latest persisted runtime-limit snapshot used by API, agent, and UI surfaces.

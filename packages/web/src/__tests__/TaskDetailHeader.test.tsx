@@ -296,6 +296,57 @@ describe("TaskDetailHeader", () => {
     expect(screen.getByText("MANUAL REVIEW")).toBeDefined();
   });
 
+  it("leaves the final decision on a GitHub pull request", () => {
+    render(
+      <TaskDetailHeader
+        task={{
+          ...baseTask,
+          status: "done",
+          github: {
+            projectId: "proj-1",
+            issueNumber: 154,
+            taskId: baseTask.id,
+            nodeId: "issue-node",
+            htmlUrl: "https://github.com/lee-to/aif-handoff/issues/154",
+            state: "open",
+            metadata: {
+              title: "GitHub mode",
+              body: "",
+              author: "lee-to",
+              labels: [],
+              assignees: [],
+              milestone: null,
+              comments: [],
+            },
+            sourceUpdatedAt: "2026-08-08T00:00:00.000Z",
+            lastSyncedAt: "2026-08-08T00:00:00.000Z",
+            syncError: null,
+            prNumber: 200,
+            prUrl: "https://github.com/lee-to/aif-handoff/pull/200",
+            prState: "open",
+            prChecksStatus: "success",
+            reviewState: "pending",
+            lastReviewId: null,
+            createdAt: "2026-08-08T00:00:00.000Z",
+            updatedAt: "2026-08-08T00:00:00.000Z",
+          },
+        }}
+        activeTab="implementation"
+        onTabChange={vi.fn()}
+        onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
+        isDisabled={false}
+        isCheckingStartAi={false}
+        planChangeSuccess={null}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("GITHUB #154")).toBeDefined();
+    expect(screen.queryByText("Approve")).toBeNull();
+    expect(screen.queryByText("Request changes")).toBeNull();
+  });
+
   it("should render Resume button and PAUSED badge when task is paused", () => {
     const pausedTask = { ...baseTask, paused: true };
     render(

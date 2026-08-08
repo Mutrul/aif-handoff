@@ -95,6 +95,7 @@ import { transitionTaskStatus as transitionTaskStatusAtomic } from "./taskTransi
 import { createAuditEventValues } from "./audit.js";
 
 export * from "./normalizeBacklogPositions.js";
+export * from "./github.js";
 export {
   appendAuditEvent,
   listAuditEvents,

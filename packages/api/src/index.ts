@@ -9,6 +9,7 @@ import { runtimeProfilesRouter } from "./routes/runtimeProfiles.js";
 import { codexAuthRouter } from "./routes/codexAuth.js";
 import { authRouter } from "./routes/auth.js";
 import { participantsRouter } from "./routes/participants.js";
+import { githubRouter } from "./routes/github.js";
 import { setupWebSocket, closeAllWebSocketClients } from "./ws.js";
 import { requestLogger } from "./middleware/logger.js";
 import { trackApiLoad } from "./middleware/apiLoad.js";
@@ -82,6 +83,7 @@ app.get("/settings", async (c) => {
 app.route("/auth", authRouter);
 app.route("/participants", participantsRouter);
 app.route("/projects", projectsRouter);
+app.route("/projects", githubRouter);
 app.route("/tasks", tasksRouter);
 app.route("/chat", chatRouter);
 app.route("/settings", settingsRoutes);

@@ -274,6 +274,67 @@ export const auditEvents = sqliteTable("audit_events", {
 export type AuditEventRow = typeof auditEvents.$inferSelect;
 export type NewAuditEventRow = typeof auditEvents.$inferInsert;
 
+export const githubRepositories = sqliteTable("github_repositories", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  owner: text("owner").notNull(),
+  name: text("name").notNull(),
+  htmlUrl: text("html_url").notNull(),
+  defaultBranch: text("default_branch").notNull(),
+  tokenEnvVar: text("token_env_var").notNull().default("GITHUB_TOKEN"),
+  eligibilityJson: text("eligibility_json").notNull().default("{}"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  lastSyncedAt: text("last_synced_at"),
+  syncError: text("sync_error"),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+});
+
+export type GitHubRepositoryRow = typeof githubRepositories.$inferSelect;
+export type NewGitHubRepositoryRow = typeof githubRepositories.$inferInsert;
+
+export const githubIssues = sqliteTable(
+  "github_issues",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    issueNumber: integer("issue_number").notNull(),
+    taskId: text("task_id")
+      .unique()
+      .references(() => tasks.id, { onDelete: "set null" }),
+    nodeId: text("node_id").notNull(),
+    htmlUrl: text("html_url").notNull(),
+    state: text("state").$type<"open" | "closed">().notNull(),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    sourceUpdatedAt: text("source_updated_at").notNull(),
+    lastSyncedAt: text("last_synced_at").notNull(),
+    syncError: text("sync_error"),
+    prNumber: integer("pr_number"),
+    prUrl: text("pr_url"),
+    prState: text("pr_state").$type<"open" | "closed" | "merged" | null>(),
+    prChecksStatus: text("pr_checks_status").$type<"pending" | "success" | "failure" | null>(),
+    reviewState: text("review_state").$type<"pending" | "approved" | "changes_requested" | null>(),
+    lastReviewId: integer("last_review_id"),
+    reviewFingerprint: text("review_fingerprint"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+  },
+  (table) => [primaryKey({ columns: [table.projectId, table.issueNumber] })],
+);
+
+export type GitHubIssueRow = typeof githubIssues.$inferSelect;
+export type NewGitHubIssueRow = typeof githubIssues.$inferInsert;
+
 export const runtimeProfiles = sqliteTable("runtime_profiles", {
   id: text("id")
     .primaryKey()

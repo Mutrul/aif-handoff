@@ -30,6 +30,9 @@ import type {
   HandoffTaskInput,
   TaskExecutorHistoryEntry,
   TaskOwnership,
+  GitHubEligibility,
+  GitHubIssueLink,
+  GitHubRepositoryConnection,
 } from "@aif/shared/browser";
 
 export class ApiError extends Error {
@@ -186,6 +189,7 @@ export interface SettingsResponse {
   usageLimitsEnabled: boolean;
   warmupEnabled: boolean;
   qaPipelineEnabled?: boolean;
+  githubIssuePrEnabled?: boolean;
   runtimeReadiness: {
     availableRuntimeCount: number;
     runtimeProfileCount: number;
@@ -255,6 +259,11 @@ export type CreateProjectWarmupResponse = ProjectWarmupResponse | PartialProject
 export interface ClearProjectWarmupResponse {
   success: boolean;
   cleared: number;
+}
+
+export interface GitHubProjectState {
+  connection: GitHubRepositoryConnection | null;
+  issues: GitHubIssueLink[];
 }
 
 export interface SendChatMessageResponse {
@@ -560,6 +569,41 @@ export const api = {
 
   getProjectMcp(id: string): Promise<{ mcpServers: Record<string, unknown> }> {
     return request(`/projects/${id}/mcp`);
+  },
+
+  getProjectGitHub(id: string): Promise<GitHubProjectState> {
+    return request(`/projects/${encodeURIComponent(id)}/github`);
+  },
+
+  connectProjectGitHub(
+    id: string,
+    input: {
+      repository: string;
+      tokenEnvVar: string;
+      enabled: boolean;
+      eligibility: GitHubEligibility;
+    },
+  ): Promise<GitHubRepositoryConnection> {
+    return request(`/projects/${encodeURIComponent(id)}/github`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+
+  disconnectProjectGitHub(id: string): Promise<void> {
+    return request(`/projects/${encodeURIComponent(id)}/github`, { method: "DELETE" });
+  },
+
+  syncProjectGitHub(id: string): Promise<{
+    imported: number;
+    updated: number;
+    skipped: number;
+    issues: GitHubIssueLink[];
+  }> {
+    return request(`/projects/${encodeURIComponent(id)}/github/sync`, {
+      method: "POST",
+      body: "{}",
+    });
   },
 
   getProjectWarmup(id: string): Promise<ProjectWarmupResponse> {

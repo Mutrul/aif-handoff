@@ -82,6 +82,68 @@ export interface Project {
   updatedAt: string;
 }
 
+export interface GitHubEligibility {
+  labels: string[];
+  assignee: string | null;
+  milestone: string | null;
+}
+
+export interface GitHubRepositoryConnection {
+  projectId: string;
+  owner: string;
+  name: string;
+  htmlUrl: string;
+  defaultBranch: string;
+  tokenEnvVar: string;
+  eligibility: GitHubEligibility;
+  enabled: boolean;
+  tokenConfigured: boolean;
+  lastSyncedAt: string | null;
+  syncError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GitHubIssueCommentSnapshot {
+  id: number;
+  author: string;
+  body: string;
+  htmlUrl: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GitHubIssueSnapshot {
+  title: string;
+  body: string;
+  author: string;
+  labels: string[];
+  assignees: string[];
+  milestone: string | null;
+  comments: GitHubIssueCommentSnapshot[];
+}
+
+export interface GitHubIssueLink {
+  projectId: string;
+  issueNumber: number;
+  taskId: string | null;
+  nodeId: string;
+  htmlUrl: string;
+  state: "open" | "closed";
+  metadata: GitHubIssueSnapshot;
+  sourceUpdatedAt: string;
+  lastSyncedAt: string;
+  syncError: string | null;
+  prNumber: number | null;
+  prUrl: string | null;
+  prState: "open" | "closed" | "merged" | null;
+  prChecksStatus: "pending" | "success" | "failure" | null;
+  reviewState: "pending" | "approved" | "changes_requested" | null;
+  lastReviewId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CreateProjectInput {
   name: string;
   rootPath: string;
@@ -316,6 +378,7 @@ export interface Task {
   autoQueueCommitCompletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  github?: GitHubIssueLink | null;
 }
 
 export interface TaskListItem {
