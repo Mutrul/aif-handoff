@@ -60,4 +60,40 @@ describe("sendTelegramNotification", () => {
       }),
     );
   });
+
+  it("renders an escaped project name before a plain task title", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:ABC");
+    vi.stubEnv("TELEGRAM_USER_ID", "999");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = fetchMock as typeof fetch;
+
+    await sendTelegramNotification({
+      taskId: "task-project",
+      projectName: "Platform [Core]",
+      title: "Fix login (redirect)",
+      fromStatus: "review",
+      toStatus: "done",
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.text).toBe("📁 *Platform \\[Core\\]*\n📋 Fix login \\(redirect\\)\nreview → done");
+  });
+
+  it("keeps the existing message shape when the project is unavailable", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:ABC");
+    vi.stubEnv("TELEGRAM_USER_ID", "999");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = fetchMock as typeof fetch;
+
+    await sendTelegramNotification({
+      taskId: "task-legacy",
+      title: "Legacy title",
+      toStatus: "done",
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.text).toBe("📋 *Legacy title*\ndone");
+  });
 });

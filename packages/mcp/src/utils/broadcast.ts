@@ -1,11 +1,29 @@
+import { findProjectByTaskId } from "@aif/data";
 import { getEnv, logger, sendTelegramNotification } from "@aif/shared";
 
 const log = logger("mcp:broadcast");
 
 export interface BroadcastOptions {
+  projectName?: string;
   title?: string;
   fromStatus?: string;
   toStatus?: string;
+}
+
+function resolveTelegramProjectName(taskId: string, projectName?: string): string | undefined {
+  if (projectName !== undefined) return projectName;
+
+  try {
+    const resolvedProjectName = findProjectByTaskId(taskId)?.name;
+    log.debug(
+      { taskId, projectResolved: resolvedProjectName !== undefined },
+      "Telegram project lookup completed",
+    );
+    return resolvedProjectName;
+  } catch (err) {
+    log.debug({ taskId, err }, "Telegram project lookup failed");
+    return undefined;
+  }
 }
 
 /**
@@ -44,6 +62,7 @@ export async function broadcastTaskChange(
   if (type === "task:moved" && (!options.fromStatus || options.fromStatus !== options.toStatus)) {
     void sendTelegramNotification({
       taskId,
+      projectName: resolveTelegramProjectName(taskId, options.projectName),
       title: options.title,
       fromStatus: options.fromStatus,
       toStatus: options.toStatus,

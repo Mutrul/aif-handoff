@@ -11,6 +11,7 @@ export function escapeMarkdown(text: string): string {
 
 export interface TelegramNotificationOptions {
   taskId: string;
+  projectName?: string;
   title?: string;
   fromStatus?: string;
   toStatus?: string;
@@ -40,7 +41,10 @@ export async function sendTelegramNotification(
       ? `${options.fromStatus} → ${options.toStatus}`
       : (options.toStatus ?? "updated");
 
-  const text = `📋 *${escapeMarkdown(displayTitle)}*\n${escapeMarkdown(transition)}`;
+  const escapedTitle = escapeMarkdown(displayTitle);
+  const text = options.projectName
+    ? `📁 *${escapeMarkdown(options.projectName)}*\n📋 ${escapedTitle}\n${escapeMarkdown(transition)}`
+    : `📋 *${escapedTitle}*\n${escapeMarkdown(transition)}`;
 
   try {
     const res = await fetch(`${apiBaseUrl}/bot${botToken}/sendMessage`, {

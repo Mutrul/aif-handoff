@@ -597,7 +597,15 @@ TELEGRAM_USER_ID=987654321
 | `TELEGRAM_BOT_TOKEN`   | string | _(optional)_               | Bot token from [@BotFather](https://t.me/BotFather)                |
 | `TELEGRAM_USER_ID`     | string | _(optional)_               | Your Telegram user ID (the bot sends direct messages to this user) |
 
-When both variables are set, every `task:moved` event sends a short message with the task title and status transition. If delivery fails (network error, invalid token, etc.), nothing breaks — failures are logged at `debug` level and silently ignored.
+When both variables are set, every `task:moved` event sends a short message with the project name, task title, and status transition:
+
+```text
+📁 My Project
+📋 [42] Fix login redirect
+review → done
+```
+
+The project name is resolved from the task and escaped for Telegram MarkdownV2. Callers that already know the project can provide it directly. If the project lookup fails or no project is found, the notification keeps the legacy two-line task-title and transition format. Delivery and project lookup are both best-effort: failures are logged at `debug` level and never block task processing.
 
 To get your user ID, message [@userinfobot](https://t.me/userinfobot) or any similar bot on Telegram.
 
