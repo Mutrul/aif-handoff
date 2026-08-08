@@ -10,22 +10,6 @@ export interface BroadcastOptions {
   toStatus?: string;
 }
 
-function resolveTelegramProjectName(taskId: string, projectName?: string): string | undefined {
-  if (projectName !== undefined) return projectName;
-
-  try {
-    const resolvedProjectName = findProjectByTaskId(taskId)?.name;
-    log.debug(
-      { taskId, projectResolved: resolvedProjectName !== undefined },
-      "Telegram project lookup completed",
-    );
-    return resolvedProjectName;
-  } catch (err) {
-    log.debug({ taskId, err }, "Telegram project lookup failed");
-    return undefined;
-  }
-}
-
 /**
  * Best-effort WS broadcast via API endpoint + Telegram notification.
  * MCP tools call this after mutating task state so the UI updates in real-time.
@@ -62,7 +46,8 @@ export async function broadcastTaskChange(
   if (type === "task:moved" && (!options.fromStatus || options.fromStatus !== options.toStatus)) {
     void sendTelegramNotification({
       taskId,
-      projectName: resolveTelegramProjectName(taskId, options.projectName),
+      projectName: options.projectName,
+      resolveProjectName: () => findProjectByTaskId(taskId)?.name,
       title: options.title,
       fromStatus: options.fromStatus,
       toStatus: options.toStatus,

@@ -72,7 +72,7 @@ describe("broadcastTaskChange", () => {
     await expect(broadcastTaskChange("task-abc")).resolves.toBeUndefined();
   });
 
-  it("resolves the project name for Telegram notifications", async () => {
+  it("defers the project lookup to the Telegram sender", async () => {
     findProjectByTaskIdMock.mockReturnValue({ name: "MCP Project" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
 
@@ -82,13 +82,16 @@ describe("broadcastTaskChange", () => {
       toStatus: "plan_ready",
     });
 
-    expect(findProjectByTaskIdMock).toHaveBeenCalledWith("task-project");
+    expect(findProjectByTaskIdMock).not.toHaveBeenCalled();
     expect(sendTelegramNotificationMock).toHaveBeenCalledWith(
       expect.objectContaining({
         taskId: "task-project",
-        projectName: "MCP Project",
+        resolveProjectName: expect.any(Function),
       }),
     );
+    const notification = sendTelegramNotificationMock.mock.calls[0][0];
+    expect(notification.resolveProjectName()).toBe("MCP Project");
+    expect(findProjectByTaskIdMock).toHaveBeenCalledWith("task-project");
   });
 
   it("uses an explicit project name without querying the database", async () => {
@@ -103,25 +106,6 @@ describe("broadcastTaskChange", () => {
     expect(findProjectByTaskIdMock).not.toHaveBeenCalled();
     expect(sendTelegramNotificationMock).toHaveBeenCalledWith(
       expect.objectContaining({ projectName: "Explicit MCP Project" }),
-    );
-  });
-
-  it("still sends Telegram when project lookup throws", async () => {
-    findProjectByTaskIdMock.mockImplementation(() => {
-      throw new Error("database unavailable");
-    });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
-
-    await broadcastTaskChange("task-lookup-error", "task:moved", {
-      title: "Sync status",
-      toStatus: "review",
-    });
-
-    expect(sendTelegramNotificationMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: "task-lookup-error",
-        projectName: undefined,
-      }),
     );
   });
 });

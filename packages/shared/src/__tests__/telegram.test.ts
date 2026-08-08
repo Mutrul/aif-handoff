@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetEnvCache } from "../env.js";
 import { sendTelegramNotification } from "../telegram.js";
 
 describe("sendTelegramNotification", () => {
@@ -7,11 +8,13 @@ describe("sendTelegramNotification", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    resetEnvCache();
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
     vi.unstubAllEnvs();
+    resetEnvCache();
   });
 
   it("uses the default Telegram API URL", async () => {
@@ -64,6 +67,7 @@ describe("sendTelegramNotification", () => {
   it("renders an escaped project name before a plain task title", async () => {
     vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:ABC");
     vi.stubEnv("TELEGRAM_USER_ID", "999");
+    vi.stubEnv("AIF_NOTIFICATIONS_PROJECT_NAMES_ENABLED", "true");
 
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
     global.fetch = fetchMock as typeof fetch;
@@ -78,6 +82,24 @@ describe("sendTelegramNotification", () => {
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(body.text).toBe("📁 *Platform \\[Core\\]*\n📋 Fix login \\(redirect\\)\nreview → done");
+  });
+
+  it("keeps project names disabled by default", async () => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "123:ABC");
+    vi.stubEnv("TELEGRAM_USER_ID", "999");
+
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    global.fetch = fetchMock as typeof fetch;
+
+    await sendTelegramNotification({
+      taskId: "task-disabled",
+      projectName: "Hidden Project",
+      title: "Legacy title",
+      toStatus: "done",
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.text).toBe("📋 *Legacy title*\ndone");
   });
 
   it("keeps the existing message shape when the project is unavailable", async () => {

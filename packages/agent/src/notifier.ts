@@ -15,22 +15,6 @@ export interface TaskNotificationInfo {
 type ProjectBroadcastType = "project:auto_queue_mode_changed" | "project:auto_queue_advanced";
 type RuntimeLimitBroadcastType = "project:runtime_limit_updated";
 
-function resolveTelegramProjectName(taskId: string, projectName?: string): string | undefined {
-  if (projectName !== undefined) return projectName;
-
-  try {
-    const resolvedProjectName = findProjectByTaskId(taskId)?.name;
-    log.debug(
-      { taskId, projectResolved: resolvedProjectName !== undefined },
-      "Telegram project lookup completed",
-    );
-    return resolvedProjectName;
-  } catch (err) {
-    log.debug({ taskId, err }, "Telegram project lookup failed");
-    return undefined;
-  }
-}
-
 function internalBroadcastHeaders(): Record<string, string> {
   const token = getEnv().INTERNAL_BROADCAST_TOKEN?.trim() ?? "";
   const headers: Record<string, string> = {
@@ -148,7 +132,8 @@ export async function notifyTaskBroadcast(
   if (type === "task:moved" && (!info.fromStatus || info.fromStatus !== info.toStatus)) {
     void sendTelegramNotification({
       taskId,
-      projectName: resolveTelegramProjectName(taskId, info.projectName),
+      projectName: info.projectName,
+      resolveProjectName: () => findProjectByTaskId(taskId)?.name,
       title: info.title,
       fromStatus: info.fromStatus,
       toStatus: info.toStatus,

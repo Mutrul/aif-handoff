@@ -315,6 +315,7 @@ const envSchema = z.object({
     .default(false),
   AIF_CODEX_LOGIN_BROKER_PORT: z.coerce.number().default(3010),
   AGENT_INTERNAL_URL: z.string().default("http://agent:3010"),
+  AIF_NOTIFICATIONS_PROJECT_NAMES_ENABLED: booleanEnvSchema.default(false),
   TELEGRAM_BOT_API_URL: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_USER_ID: z.string().optional(),

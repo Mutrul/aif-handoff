@@ -1,3 +1,4 @@
+import { getEnv } from "./env.js";
 import { logger } from "./logger.js";
 
 const log = logger("telegram");
@@ -12,6 +13,7 @@ export function escapeMarkdown(text: string): string {
 export interface TelegramNotificationOptions {
   taskId: string;
   projectName?: string;
+  resolveProjectName?: () => string | undefined;
   title?: string;
   fromStatus?: string;
   toStatus?: string;
@@ -41,9 +43,25 @@ export async function sendTelegramNotification(
       ? `${options.fromStatus} → ${options.toStatus}`
       : (options.toStatus ?? "updated");
 
+  let projectName: string | undefined;
+  if (getEnv().AIF_NOTIFICATIONS_PROJECT_NAMES_ENABLED) {
+    projectName = options.projectName;
+    if (projectName === undefined && options.resolveProjectName) {
+      try {
+        projectName = options.resolveProjectName();
+        log.debug(
+          { taskId: options.taskId, projectResolved: projectName !== undefined },
+          "Telegram project lookup completed",
+        );
+      } catch (err) {
+        log.debug({ taskId: options.taskId, err }, "Telegram project lookup failed");
+      }
+    }
+  }
+
   const escapedTitle = escapeMarkdown(displayTitle);
-  const text = options.projectName
-    ? `📁 *${escapeMarkdown(options.projectName)}*\n📋 ${escapedTitle}\n${escapeMarkdown(transition)}`
+  const text = projectName
+    ? `📁 *${escapeMarkdown(projectName)}*\n📋 ${escapedTitle}\n${escapeMarkdown(transition)}`
     : `📋 *${escapedTitle}*\n${escapeMarkdown(transition)}`;
 
   try {
