@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { chatSessions } from "../schema.js";
 import { closeDb, createTestDb, getDb } from "../db.js";
 
-const CURRENT_SCHEMA_VERSION = 27;
+const CURRENT_SCHEMA_VERSION = 28;
 
 function removeSqliteArtifacts(dbPath: string): void {
   for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
@@ -23,6 +23,30 @@ describe("db", () => {
   it("createTestDb returns a working database with indexes", () => {
     const db = createTestDb();
     expect(db).toBeDefined();
+  });
+
+  it("creates restart-safe GitHub linkage tables", () => {
+    closeDb();
+    const dbPath = join(tmpdir(), `aif-shared-github-${Date.now()}-${Math.random()}.sqlite`);
+
+    try {
+      getDb(dbPath);
+      closeDb();
+      const sqlite = new Database(dbPath, { readonly: true });
+      const tables = sqlite
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('github_repositories', 'github_issues') ORDER BY name",
+        )
+        .all() as Array<{ name: string }>;
+      const userVersion = sqlite.pragma("user_version", { simple: true }) as number;
+      sqlite.close();
+
+      expect(tables.map((row) => row.name)).toEqual(["github_issues", "github_repositories"]);
+      expect(userVersion).toBe(CURRENT_SCHEMA_VERSION);
+    } finally {
+      closeDb();
+      removeSqliteArtifacts(dbPath);
+    }
   });
 
   it("creates Codex index tables for fresh databases", () => {

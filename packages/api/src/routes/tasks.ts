@@ -56,6 +56,7 @@ import {
   getTaskOwnership,
   handoffTaskExecution,
   listTaskExecutorHistory,
+  findGitHubIssueByTaskId,
   type TaskRow,
   type TaskOwnershipFilters,
 } from "@aif/data";
@@ -276,6 +277,7 @@ function toTaskRouteResponse(
 
   return {
     ...response,
+    github: findGitHubIssueByTaskId(task.id) ?? null,
     effectiveRuntime: {
       source: effectiveRuntime.source,
       profileId: effectiveRuntime.profile?.id ?? null,
