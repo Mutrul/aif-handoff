@@ -216,10 +216,9 @@ githubRouter.post("/:id/github/sync", jsonValidator(githubSyncSchema), async (c)
         } else if (task && prState === "closed" && !pull.merged_at) {
           setTaskFields(task.id, { paused: true, updatedAt: new Date().toISOString() });
         } else if (
-          existing &&
           task &&
           review.state === "changes_requested" &&
-          review.id !== existing.lastReviewId &&
+          review.id !== existing?.lastReviewId &&
           task.status === "done"
         ) {
           updateTaskStatus(

@@ -722,9 +722,12 @@ and issue linkage.
 
 `POST /projects/:id/github/sync` with `{}` imports eligible open issues, refreshes linked
 issues/comments, and reconciles PR review/check state. Repeated calls update the same task.
-A closed issue pauses its task; an unmerged closed PR also pauses it. A new
-`changes_requested` review resumes the same task at `implementing`; a merged PR advances a
-PR-ready `done` task to `verified`.
+For a newly imported issue, sync also detects an open PR whose body contains a same-repository
+`Closes`, `Fixes`, or `Resolves #<issue>` reference and creates the linked task directly in
+`done`. If that PR already has an outstanding changes-requested review, the task instead
+resumes at `implementing`. A closed issue pauses its task; an unmerged closed PR also pauses
+it. A later `changes_requested` review resumes the same task at `implementing`; a merged PR
+advances a PR-ready `done` task to `verified`.
 
 ### Publish a Task Pull Request
 

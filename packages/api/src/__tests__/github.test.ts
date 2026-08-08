@@ -188,71 +188,95 @@ describe("GitHub project routes", () => {
     expect(await response.json()).toMatchObject({ code: "github_authentication" });
   });
 
-  it("imports an issue directly into done when an open pull request closes it", async () => {
-    upsertGitHubRepository({
-      projectId: "project-1",
-      owner: "owner",
-      name: "repo",
-      htmlUrl: "https://github.com/owner/repo",
-      defaultBranch: "main",
-      tokenEnvVar: "GITHUB_TEST_TOKEN",
-      eligibility: { labels: [], assignee: null, milestone: null },
-      enabled: true,
-    });
-    const pull = {
-      number: 200,
-      html_url: "https://github.com/owner/repo/pull/200",
-      state: "open",
-      merged_at: null,
-      body: "Closes #154",
-      head: { sha: "0123456789abcdef" },
-    };
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(
-          jsonResponse([
-            {
-              number: 154,
-              node_id: "I_154",
-              html_url: "https://github.com/owner/repo/issues/154",
-              state: "open",
-              title: "GitHub mode",
-              body: "Implement it",
-              user: { login: "author" },
-              labels: [],
-              assignees: [],
-              milestone: null,
-              comments: 0,
-              updated_at: "2026-08-08T00:00:00Z",
-            },
-          ]),
-        )
-        .mockResolvedValueOnce(jsonResponse([pull]))
-        .mockResolvedValueOnce(jsonResponse([]))
-        .mockResolvedValueOnce(jsonResponse({ state: "success", total_count: 1, statuses: [{}] }))
-        .mockResolvedValueOnce(jsonResponse({ total_count: 0, check_runs: [] })),
-    );
-    const app = new Hono();
-    app.route("/projects", githubRouter);
+  it.each([
+    {
+      caseName: "has no requested changes",
+      reviews: [],
+      expectedStatus: "done",
+      expectedReviewState: "pending",
+    },
+    {
+      caseName: "already has requested changes",
+      reviews: [
+        {
+          id: 301,
+          state: "CHANGES_REQUESTED",
+          body: "Please address this finding",
+          submitted_at: "2026-08-08T01:00:00Z",
+        },
+      ],
+      expectedStatus: "implementing",
+      expectedReviewState: "changes_requested",
+    },
+  ] as const)(
+    "imports an issue with a closing pull request when it $caseName",
+    async ({ reviews, expectedStatus, expectedReviewState }) => {
+      upsertGitHubRepository({
+        projectId: "project-1",
+        owner: "owner",
+        name: "repo",
+        htmlUrl: "https://github.com/owner/repo",
+        defaultBranch: "main",
+        tokenEnvVar: "GITHUB_TEST_TOKEN",
+        eligibility: { labels: [], assignee: null, milestone: null },
+        enabled: true,
+      });
+      const pull = {
+        number: 200,
+        html_url: "https://github.com/owner/repo/pull/200",
+        state: "open",
+        merged_at: null,
+        body: "Closes #154",
+        head: { sha: "0123456789abcdef" },
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(
+            jsonResponse([
+              {
+                number: 154,
+                node_id: "I_154",
+                html_url: "https://github.com/owner/repo/issues/154",
+                state: "open",
+                title: "GitHub mode",
+                body: "Implement it",
+                user: { login: "author" },
+                labels: [],
+                assignees: [],
+                milestone: null,
+                comments: 0,
+                updated_at: "2026-08-08T00:00:00Z",
+              },
+            ]),
+          )
+          .mockResolvedValueOnce(jsonResponse([pull]))
+          .mockResolvedValueOnce(jsonResponse(reviews))
+          .mockResolvedValueOnce(jsonResponse({ state: "success", total_count: 1, statuses: [{}] }))
+          .mockResolvedValueOnce(jsonResponse({ total_count: 0, check_runs: [] })),
+      );
+      const app = new Hono();
+      app.route("/projects", githubRouter);
 
-    const response = await app.request("/projects/project-1/github/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    });
-    const body = (await response.json()) as { issues: Array<{ taskId: string }> };
+      const response = await app.request("/projects/project-1/github/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const body = (await response.json()) as { issues: Array<{ taskId: string }> };
 
-    expect(response.status).toBe(200);
-    expect(body).toMatchObject({ imported: 1, updated: 0, skipped: 0 });
-    expect(findTaskById(body.issues[0]!.taskId)?.status).toBe("done");
-    expect(findGitHubIssue("project-1", 154)).toMatchObject({
-      prNumber: 200,
-      prUrl: pull.html_url,
-      prState: "open",
-    });
-  });
+      expect(response.status).toBe(200);
+      expect(body).toMatchObject({ imported: 1, updated: 0, skipped: 0 });
+      expect(findTaskById(body.issues[0]!.taskId)?.status).toBe(expectedStatus);
+      expect(findGitHubIssue("project-1", 154)).toMatchObject({
+        prNumber: 200,
+        prUrl: pull.html_url,
+        prState: "open",
+        reviewState: expectedReviewState,
+      });
+    },
+  );
 
   it("creates one pull request and reuses it on repeated publication", async () => {
     upsertGitHubRepository({

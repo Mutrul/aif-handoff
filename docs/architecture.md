@@ -162,10 +162,13 @@ duplicate-validation response, and review comments are fingerprinted to avoid du
 
 `Done` is the terminal **PR ready for human decision** state in this mode. The coordinator
 never merges and the web UI does not offer local approve/request-change actions for these
-tasks. GitHub sync alone moves a merged PR to `Verified` or resumes the same task and branch
-at `Implementing` after a new changes-requested review. Authentication/access failures,
-rate limits, push failures, closed issues, closed unmerged PRs, and unavailable API services
-are surfaced or paused without creating a second task or PR.
+tasks. During first import, sync detects an open PR with a same-repository
+`Closes`/`Fixes`/`Resolves #<issue>` reference and atomically creates the linked task in
+`Done`; an existing changes-requested review sends it to `Implementing` instead. GitHub sync
+alone moves a merged PR to `Verified` or resumes the same task and branch at `Implementing`
+after a later changes-requested review. Authentication/access failures, rate limits, push
+failures, closed issues, closed unmerged PRs, and unavailable API services are surfaced or
+paused without creating a second task or PR.
 
 ### Reliability Guards
 
