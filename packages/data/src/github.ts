@@ -221,6 +221,11 @@ export interface ImportGitHubIssueInput {
   state: "open" | "closed";
   sourceUpdatedAt: string;
   snapshot: GitHubIssueSnapshot;
+  pullRequest?: {
+    number: number;
+    url: string;
+    state: "open";
+  };
 }
 
 export function importGitHubIssueTask(input: ImportGitHubIssueInput): {
@@ -230,6 +235,7 @@ export function importGitHubIssueTask(input: ImportGitHubIssueInput): {
 } {
   const db = getDb();
   const now = new Date().toISOString();
+  const initialStatus = input.pullRequest ? "done" : "backlog";
   let taskId = "";
   let created = false;
 
@@ -244,6 +250,13 @@ export function importGitHubIssueTask(input: ImportGitHubIssueInput): {
         metadataJson: JSON.stringify(input.snapshot),
         sourceUpdatedAt: input.sourceUpdatedAt,
         lastSyncedAt: now,
+        ...(input.pullRequest
+          ? {
+              prNumber: input.pullRequest.number,
+              prUrl: input.pullRequest.url,
+              prState: input.pullRequest.state,
+            }
+          : {}),
         createdAt: now,
         updatedAt: now,
       })
@@ -257,6 +270,13 @@ export function importGitHubIssueTask(input: ImportGitHubIssueInput): {
           sourceUpdatedAt: input.sourceUpdatedAt,
           lastSyncedAt: now,
           syncError: null,
+          ...(input.pullRequest
+            ? {
+                prNumber: input.pullRequest.number,
+                prUrl: input.pullRequest.url,
+                prState: input.pullRequest.state,
+              }
+            : {}),
           updatedAt: now,
         },
       })
@@ -310,7 +330,7 @@ export function importGitHubIssueTask(input: ImportGitHubIssueInput): {
         autoQueueCommitBaseSha: null,
         paused: input.state === "closed",
         tags: JSON.stringify(tags),
-        status: "backlog",
+        status: initialStatus,
         position: Number(maxPosition ?? 1000) + 100,
         lastHeartbeatAt: now,
         createdAt: now,
@@ -325,7 +345,7 @@ export function importGitHubIssueTask(input: ImportGitHubIssueInput): {
         ownershipRevision: 0,
         executionOwner: "ai",
         assigneesSnapshotJson: "[]",
-        statusSnapshot: "backlog",
+        statusSnapshot: initialStatus,
         actorKind: "system",
         actorId: "github-sync",
         actorDisplayNameSnapshot: "GitHub Sync",
@@ -343,9 +363,13 @@ export function importGitHubIssueTask(input: ImportGitHubIssueInput): {
           taskTitleSnapshot: title,
           executionOwnerSnapshot: "ai",
           assigneesSnapshot: [],
-          statusSnapshot: "backlog",
+          statusSnapshot: initialStatus,
           actor: { kind: "system", id: "github-sync", displayNameSnapshot: "GitHub Sync" },
-          metadata: { repository: `${input.owner}/${input.repository}`, issueNumber: input.issueNumber },
+          metadata: {
+            repository: `${input.owner}/${input.repository}`,
+            issueNumber: input.issueNumber,
+            ...(input.pullRequest ? { prNumber: input.pullRequest.number } : {}),
+          },
           createdAt: now,
         }),
       )

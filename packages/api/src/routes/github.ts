@@ -21,6 +21,7 @@ import { githubConnectSchema, githubPublishSchema, githubSyncSchema } from "../s
 import {
   GitHubApiError,
   GitHubClient,
+  findPullRequestClosingIssue,
   issueIsEligible,
   latestReviewState,
   reviewFingerprint,
@@ -139,6 +140,13 @@ githubRouter.post("/:id/github/sync", jsonValidator(githubSyncSchema), async (c)
     const existingByNumber = new Map(
       listGitHubIssues(projectId).map((issue) => [issue.issueNumber, issue]),
     );
+    const hasNewEligibleIssues = remoteIssues.some(
+      (issue) =>
+        !existingByNumber.has(issue.number) && issueIsEligible(issue, connection.eligibility),
+    );
+    const openPulls = hasNewEligibleIssues
+      ? await client.listOpenPullRequests(connection.owner, connection.name)
+      : [];
     let imported = 0;
     let updated = 0;
     let skipped = 0;
@@ -149,6 +157,7 @@ githubRouter.post("/:id/github/sync", jsonValidator(githubSyncSchema), async (c)
         skipped += 1;
         continue;
       }
+      const closingPull = existing ? null : findPullRequestClosingIssue(openPulls, issue.number);
       const snapshot = await toIssueSnapshot(client, connection.owner, connection.name, issue);
       const result = importGitHubIssueTask({
         projectId,
@@ -160,22 +169,25 @@ githubRouter.post("/:id/github/sync", jsonValidator(githubSyncSchema), async (c)
         state: issue.state,
         sourceUpdatedAt: issue.updated_at,
         snapshot,
+        ...(closingPull
+          ? {
+              pullRequest: {
+                number: closingPull.number,
+                url: closingPull.html_url,
+                state: "open" as const,
+              },
+            }
+          : {}),
       });
       synchronizedNumbers.add(issue.number);
       if (result.created) imported += 1;
       else updated += 1;
 
-      if (existing?.prNumber) {
-        const pull = await client.getPullRequest(
-          connection.owner,
-          connection.name,
-          existing.prNumber,
-        );
-        const reviews = await client.listReviews(
-          connection.owner,
-          connection.name,
-          existing.prNumber,
-        );
+      const prNumber = existing?.prNumber ?? closingPull?.number;
+      if (prNumber) {
+        const pull =
+          closingPull ?? (await client.getPullRequest(connection.owner, connection.name, prNumber));
+        const reviews = await client.listReviews(connection.owner, connection.name, prNumber);
         const review = latestReviewState(reviews);
         const prState = pull.merged_at ? "merged" : pull.state;
         const checks = await client.getCommitChecks(
@@ -204,6 +216,7 @@ githubRouter.post("/:id/github/sync", jsonValidator(githubSyncSchema), async (c)
         } else if (task && prState === "closed" && !pull.merged_at) {
           setTaskFields(task.id, { paused: true, updatedAt: new Date().toISOString() });
         } else if (
+          existing &&
           task &&
           review.state === "changes_requested" &&
           review.id !== existing.lastReviewId &&

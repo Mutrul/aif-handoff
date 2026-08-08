@@ -99,6 +99,24 @@ describe("GitHub issue import", () => {
     expect(linked).toMatchObject({ taskId: imported.taskId, prNumber: 7, prState: "open" });
   });
 
+  it("creates a linked task in done when an open pull request already exists", () => {
+    const imported = importGitHubIssueTask({
+      ...input,
+      pullRequest: {
+        number: 7,
+        url: "https://github.com/openai/example/pull/7",
+        state: "open",
+      },
+    });
+
+    expect(findGitHubIssueByTaskId(imported.taskId)).toMatchObject({
+      prNumber: 7,
+      prUrl: "https://github.com/openai/example/pull/7",
+      prState: "open",
+    });
+    expect(testDb.current.select().from(tasks).get()?.status).toBe("done");
+  });
+
   it("pauses a task when its source issue disappears", () => {
     const imported = importGitHubIssueTask(input);
 

@@ -55,11 +55,12 @@ interface GitHubCommentResponse {
   updated_at: string;
 }
 
-interface GitHubPullResponse {
+export interface GitHubPullResponse {
   number: number;
   html_url: string;
   state: "open" | "closed";
   merged_at: string | null;
+  body: string | null;
   head: { sha: string };
 }
 
@@ -194,6 +195,12 @@ export class GitHubClient {
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/pulls?state=all&head=${encodeURIComponent(`${owner}:${branch}`)}`,
     );
     return pulls[0] ?? null;
+  }
+
+  listOpenPullRequests(owner: string, repository: string): Promise<GitHubPullResponse[]> {
+    return this.list(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/pulls?state=open`,
+    );
   }
 
   createPullRequest(input: {
@@ -343,6 +350,17 @@ export function issueIsEligible(
     ? issue.milestone?.title === eligibility.milestone
     : true;
   return issue.state === "open" && hasLabels && hasAssignee && hasMilestone;
+}
+
+export function findPullRequestClosingIssue(
+  pulls: GitHubPullResponse[],
+  issueNumber: number,
+): GitHubPullResponse | null {
+  const closingReference = new RegExp(
+    `\\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\\s+#${issueNumber}(?!\\d)`,
+    "i",
+  );
+  return pulls.find((pull) => pull.body && closingReference.test(pull.body)) ?? null;
 }
 
 export async function toIssueSnapshot(
