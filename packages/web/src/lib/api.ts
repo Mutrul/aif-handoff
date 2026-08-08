@@ -189,6 +189,7 @@ export interface SettingsResponse {
   usageLimitsEnabled: boolean;
   warmupEnabled: boolean;
   qaPipelineEnabled?: boolean;
+  githubIssuePrEnabled?: boolean;
   runtimeReadiness: {
     availableRuntimeCount: number;
     runtimeProfileCount: number;

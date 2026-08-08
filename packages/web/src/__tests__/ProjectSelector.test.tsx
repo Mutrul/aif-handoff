@@ -12,6 +12,7 @@ const mutateConnectGitHub = vi.fn();
 const mutateDisconnectGitHub = vi.fn();
 const mutateSyncGitHub = vi.fn();
 const mockToast = vi.fn();
+let mockGitHubIssuePrEnabled = true;
 let mockProjects = [
   {
     id: "p-1",
@@ -67,6 +68,10 @@ vi.mock("@/components/ui/toast", () => ({
   ToastProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+vi.mock("@/hooks/useSettings", () => ({
+  useSettings: () => ({ data: { githubIssuePrEnabled: mockGitHubIssuePrEnabled } }),
+}));
+
 const { ProjectSelector } = await import("@/components/project/ProjectSelector");
 
 describe("ProjectSelector", () => {
@@ -81,6 +86,7 @@ describe("ProjectSelector", () => {
     mutateDisconnectGitHub.mockReset();
     mutateSyncGitHub.mockReset();
     mockToast.mockReset();
+    mockGitHubIssuePrEnabled = true;
     mockProjects = [
       {
         id: "p-1",
@@ -549,6 +555,17 @@ describe("ProjectSelector", () => {
       "error",
       8000,
     );
+  });
+
+  it("hides GitHub project controls while the rollout flag is disabled", () => {
+    mockGitHubIssuePrEnabled = false;
+    mockUseQuery.mockReturnValue({ data: undefined, isLoading: false });
+
+    render(<ProjectSelector selectedId="p-1" onSelect={() => {}} onDeselect={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /alpha/i }));
+    fireEvent.click(screen.getByTitle("Edit"));
+
+    expect(screen.queryByText("GitHub Issue-to-PR")).toBeNull();
   });
 
   describe("auto-queue toggle", () => {

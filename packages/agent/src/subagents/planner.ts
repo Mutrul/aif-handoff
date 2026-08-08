@@ -191,7 +191,9 @@ export async function runPlanner(taskId: string, projectRoot: string): Promise<v
     preparedBranch = task.branchName;
     logActivity(taskId, "Agent", `Restored feature branch: ${task.branchName}`);
   } else if (!task.isFix && plannerMode === "full") {
-    const githubIssue = findGitHubIssueByTaskId(taskId);
+    const githubIssue = getEnv().AIF_GITHUB_ISSUE_PR_ENABLED
+      ? findGitHubIssueByTaskId(taskId)
+      : null;
     const shouldCreateWorktree =
       Boolean(githubIssue) ||
       (getEnv().AIF_TASK_WORKTREES_ENABLED &&

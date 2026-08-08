@@ -47,6 +47,7 @@ import {
   useSyncProjectGitHub,
 } from "@/hooks/useProjects";
 import { useToast } from "@/components/ui/toast";
+import { useSettings } from "@/hooks/useSettings";
 import { api } from "@/lib/api";
 import type { Project } from "@aif/shared/browser";
 import { PROJECT_SORT_OPTIONS, sortProjects, type ProjectSort } from "@/lib/projectSorting";
@@ -71,6 +72,8 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
   const disconnectGitHub = useDisconnectProjectGitHub();
   const syncGitHub = useSyncProjectGitHub();
   const { toast } = useToast();
+  const { data: settings } = useSettings();
+  const githubIssuePrEnabled = settings?.githubIssuePrEnabled ?? false;
 
   const showMutationError = (error: unknown, fallback: string) => {
     toast(error instanceof Error ? error.message : fallback, "error", 8000);
@@ -173,7 +176,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
   const isEditDialogOpen = dialogOpen && dialogMode === "edit" && !!editingId;
   const { data: githubData, isLoading: isGitHubLoading } = useProjectGitHub(
     editingId,
-    isEditDialogOpen,
+    isEditDialogOpen && githubIssuePrEnabled,
   );
   const { data: mcpData, isLoading: isMcpLoading } = useQuery({
     queryKey: ["project-mcp", editingId],
@@ -689,7 +692,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect, canManage = 
                 PROJECTS_MOUNT; host paths under PROJECTS_DIR use the same mount.
               </p>
             </div>
-            {dialogMode === "edit" && (
+            {dialogMode === "edit" && githubIssuePrEnabled && (
               <div>
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <label className="flex items-center gap-1.5 text-sm font-medium">

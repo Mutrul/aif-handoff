@@ -686,6 +686,9 @@ Used by API/agent services to trigger project-scoped WebSocket broadcasts withou
 
 ## GitHub Issue-to-PR
 
+All endpoints in this section return `403` with `code: "feature_disabled"` unless
+`AIF_GITHUB_ISSUE_PR_ENABLED=true`.
+
 GitHub endpoints use the project connection's token environment variable. Token values are
 never accepted in request bodies or returned in responses.
 

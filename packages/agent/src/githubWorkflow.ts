@@ -29,7 +29,12 @@ async function readFailure(response: Response): Promise<GitHubApiFailure> {
 }
 
 export async function synchronizeGitHubProjects(now = Date.now()): Promise<void> {
-  const baseUrl = getEnv().API_BASE_URL;
+  const env = getEnv();
+  if (!env.AIF_GITHUB_ISSUE_PR_ENABLED) {
+    log.debug("[FIX:154] GitHub synchronization skipped because rollout flag is disabled");
+    return;
+  }
+  const baseUrl = env.API_BASE_URL;
   for (const connection of listEnabledGitHubRepositories()) {
     const lastSync = connection.lastSyncedAt ? Date.parse(connection.lastSyncedAt) : 0;
     const lastAttempt = lastSyncAttempts.get(connection.projectId) ?? 0;
@@ -75,6 +80,13 @@ function pushBranch(projectRoot: string, branch: string): void {
 }
 
 export async function publishGitHubTask(taskId: string, projectRoot: string): Promise<boolean> {
+  if (!getEnv().AIF_GITHUB_ISSUE_PR_ENABLED) {
+    log.debug(
+      { taskId },
+      "[FIX:154] GitHub pull request publication skipped because rollout flag is disabled",
+    );
+    return false;
+  }
   const issue = findGitHubIssueByTaskId(taskId);
   if (!issue) return false;
 

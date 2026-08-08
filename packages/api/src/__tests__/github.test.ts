@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { projects } from "@aif/shared";
+import { projects, resetEnvCache } from "@aif/shared";
 import { createTestDb } from "@aif/shared/server";
 
 const testDb = { current: createTestDb() };
@@ -28,7 +28,15 @@ beforeEach(() => {
     .values({ id: "project-1", name: "Repo", rootPath: "/tmp/repo" })
     .run();
   vi.stubEnv("GITHUB_TEST_TOKEN", "secret-token");
+  vi.stubEnv("AIF_GITHUB_ISSUE_PR_ENABLED", "true");
+  resetEnvCache();
   vi.restoreAllMocks();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  resetEnvCache();
 });
 
 describe("GitHub client", () => {
@@ -77,9 +85,52 @@ describe("GitHub client", () => {
       ),
     ).toBe(true);
   });
+
+  it.each([
+    ["success", "success"],
+    ["failure", "failure"],
+  ] as const)(
+    "uses an Actions-only %s check run when legacy statuses are absent",
+    async (conclusion, expected) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ state: "pending", total_count: 0, statuses: [] }))
+        .mockResolvedValueOnce(
+          jsonResponse({
+            total_count: 1,
+            check_runs: [{ status: "completed", conclusion }],
+          }),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(
+        new GitHubClient("secret").getCommitChecks("owner", "repo", "abc"),
+      ).resolves.toBe(expected);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    },
+  );
 });
 
 describe("GitHub project routes", () => {
+  it("rejects GitHub routes while the rollout flag is disabled", async () => {
+    vi.stubEnv("AIF_GITHUB_ISSUE_PR_ENABLED", "false");
+    resetEnvCache();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const app = new Hono();
+    app.route("/projects", githubRouter);
+
+    const response = await app.request("/projects/project-1/github", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repository: "owner/repo", tokenEnvVar: "GITHUB_TEST_TOKEN" }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "feature_disabled" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("connects a repository and performs an idempotent empty sync", async () => {
     const fetchMock = vi
       .fn()
@@ -179,10 +230,12 @@ describe("GitHub project routes", () => {
       .mockResolvedValueOnce(jsonResponse(pull))
       .mockResolvedValueOnce(jsonResponse([]))
       .mockResolvedValueOnce(jsonResponse({}))
-      .mockResolvedValueOnce(jsonResponse({ state: "success" }))
+      .mockResolvedValueOnce(jsonResponse({ state: "success", total_count: 1, statuses: [{}] }))
+      .mockResolvedValueOnce(jsonResponse({ total_count: 0, check_runs: [] }))
       .mockResolvedValueOnce(jsonResponse(pull))
       .mockResolvedValueOnce(jsonResponse(pull))
-      .mockResolvedValueOnce(jsonResponse({ state: "success" }));
+      .mockResolvedValueOnce(jsonResponse({ state: "success", total_count: 1, statuses: [{}] }))
+      .mockResolvedValueOnce(jsonResponse({ total_count: 0, check_runs: [] }));
     vi.stubGlobal("fetch", fetchMock);
     const app = new Hono();
     app.route("/projects", githubRouter);

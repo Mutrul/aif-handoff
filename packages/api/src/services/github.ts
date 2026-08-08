@@ -70,6 +70,26 @@ interface GitHubReviewResponse {
   submitted_at: string | null;
 }
 
+type GitHubCheckState = "pending" | "success" | "failure" | null;
+
+interface GitHubCombinedStatusResponse {
+  state: "pending" | "success" | "failure" | "error";
+  total_count?: number;
+  statuses?: unknown[];
+}
+
+interface GitHubCheckRunResponse {
+  status: string;
+  conclusion: string | null;
+}
+
+interface GitHubCheckRunsResponse {
+  total_count: number;
+  check_runs: GitHubCheckRunResponse[];
+}
+
+const SUCCESSFUL_CHECK_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
+
 function retryAtFromHeaders(headers: Headers): string | null {
   const retryAfter = Number(headers.get("retry-after"));
   if (Number.isFinite(retryAfter) && retryAfter >= 0) {
@@ -222,15 +242,63 @@ export class GitHubClient {
     );
   }
 
-  async getCommitChecks(
+  private async listCheckRuns(
     owner: string,
     repository: string,
     sha: string,
-  ): Promise<"pending" | "success" | "failure"> {
-    const status = await this.request<{ state: "pending" | "success" | "failure" | "error" }>(
-      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/commits/${encodeURIComponent(sha)}/status`,
+  ): Promise<GitHubCheckRunResponse[]> {
+    const runs: GitHubCheckRunResponse[] = [];
+    for (let page = 1; ; page += 1) {
+      const response = await this.request<GitHubCheckRunsResponse>(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/commits/${encodeURIComponent(sha)}/check-runs?filter=latest&per_page=100&page=${page}`,
+      );
+      runs.push(...response.check_runs);
+      if (response.check_runs.length < 100 || runs.length >= response.total_count) return runs;
+    }
+  }
+
+  async getCommitChecks(owner: string, repository: string, sha: string): Promise<GitHubCheckState> {
+    const [status, checkRuns] = await Promise.all([
+      this.request<GitHubCombinedStatusResponse>(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/commits/${encodeURIComponent(sha)}/status`,
+      ),
+      this.listCheckRuns(owner, repository, sha),
+    ]);
+    const states: Exclude<GitHubCheckState, null>[] = [];
+    const legacyCount = status.total_count ?? status.statuses?.length;
+    if (legacyCount === undefined || legacyCount > 0) {
+      states.push(status.state === "error" ? "failure" : status.state);
+    }
+    for (const run of checkRuns) {
+      if (run.status !== "completed") {
+        states.push("pending");
+      } else {
+        states.push(
+          run.conclusion && SUCCESSFUL_CHECK_CONCLUSIONS.has(run.conclusion)
+            ? "success"
+            : "failure",
+        );
+      }
+    }
+    const result: GitHubCheckState = states.includes("failure")
+      ? "failure"
+      : states.includes("pending")
+        ? "pending"
+        : states.includes("success")
+          ? "success"
+          : null;
+    log.debug(
+      {
+        owner,
+        repository,
+        sha,
+        legacyCount: legacyCount ?? null,
+        checkRunCount: checkRuns.length,
+        result,
+      },
+      "[FIX:154] Combined GitHub commit statuses and check runs",
     );
-    return status.state === "error" ? "failure" : status.state;
+    return result;
   }
 
   async upsertMarkerComment(input: {

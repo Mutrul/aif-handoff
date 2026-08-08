@@ -137,6 +137,10 @@ Implementing ──[runPostVerify]──► Verify ──► Review
 
 ### GitHub Issue-to-PR Workflow
 
+The entire workflow is guarded by the off-by-default `AIF_GITHUB_ISSUE_PR_ENABLED` rollout
+flag. When disabled, the API, UI, planner, and coordinator preserve legacy behavior and make
+no GitHub calls or GitHub-specific Git mutations.
+
 One optional GitHub repository connection belongs to a project. The API periodically reads
 eligible issues and atomically maps `(project_id, issue_number)` to one full-mode task. Issue
 title, body, labels, assignees, milestone, comments, state, and source timestamps remain a
