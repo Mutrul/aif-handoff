@@ -18,4 +18,8 @@ export type ListMcpServerStatusParams = {
    */
   detail?: McpServerStatusDetail | null;
   threadId?: string | null;
+  /**
+   * Limit discovery to one server. With a thread ID, reuse that thread's MCP connection.
+   */
+  serverName?: string | null;
 };

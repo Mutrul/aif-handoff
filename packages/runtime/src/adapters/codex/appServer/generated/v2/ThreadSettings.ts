@@ -12,6 +12,10 @@ import type { AskForApproval } from "./AskForApproval";
 import type { SandboxPolicy } from "./SandboxPolicy";
 
 export type ThreadSettings = {
+  /**
+   * Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.
+   */
+  disabledPluginIds: Array<string>;
   cwd: AbsolutePathBuf;
   approvalPolicy: AskForApproval;
   approvalsReviewer: ApprovalsReviewer;
@@ -22,6 +26,8 @@ export type ThreadSettings = {
   serviceTier: string | null;
   effort: ReasoningEffort | null;
   summary: ReasoningSummary | null;
-  collaborationMode: CollaborationMode;
+  collaborationMode: CollaborationMode; /**
+   * @deprecated Reports the saved setting; `friendly` and `pragmatic` no longer select a style.
+   */
   personality: Personality | null;
 };

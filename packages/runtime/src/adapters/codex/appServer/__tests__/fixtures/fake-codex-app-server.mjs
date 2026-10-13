@@ -430,6 +430,12 @@ function handleRequest(message) {
                           id: "item-user-1",
                           content: [
                             { type: "text", text: "Stored user prompt", text_elements: [] },
+                            ...(scenario === "session-discovery-images"
+                              ? [
+                                  { type: "image", url: "https://example.com/image.png" },
+                                  { type: "image", fileId: "file-image-1" },
+                                ]
+                              : []),
                           ],
                         },
                         {

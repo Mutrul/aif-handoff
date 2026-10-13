@@ -25,7 +25,7 @@ const packageLock = JSON.parse(
   readFileSync(resolve(repositoryRoot, "package-lock.json"), "utf8"),
 ) as { packages: Record<string, { dependencies?: Record<string, string> }> };
 const bunLock = readFileSync(resolve(repositoryRoot, "bun.lock"), "utf8");
-const reviewedCodexVersion = "0.145.0";
+const reviewedCodexVersion = "0.162.1";
 
 describe("Docker Codex version resolution", () => {
   it("defaults to the reviewed SDK version while retaining the build selector", () => {

@@ -13,7 +13,10 @@ export type ThreadStartResponse = {
   thread: Thread;
   model: string;
   modelProvider: string;
-  serviceTier: string | null;
+  serviceTier: string | null; /**
+   * Saved list of disabled plugin IDs. Does not yet filter plugin capabilities.
+   */
+  disabledPluginIds: Array<string>;
   cwd: AbsolutePathBuf; /**
    * Environment-native paths to instruction source files currently loaded for this thread.
    */
