@@ -77,5 +77,10 @@
     "ip-address": "10.7.2",
     "qs": "6.16.0"
   },
-  "packageManager": "npm@11.12.1"
+  "packageManager": "npm@11.12.1",
+  "allowScripts": {
+    "better-sqlite3": true,
+    "esbuild": true,
+    "fsevents": false
+  }
 }
