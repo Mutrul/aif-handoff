@@ -295,7 +295,7 @@ function renderUserInput(content: UserInput[]): string {
         case "text":
           return entry.text;
         case "image":
-          return `[image: ${entry.url}]`;
+          return `[image: ${"url" in entry ? entry.url : entry.fileId}]`;
         case "localImage":
           return `[image: ${entry.path}]`;
         case "skill":

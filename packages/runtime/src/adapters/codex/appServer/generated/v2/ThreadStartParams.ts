@@ -23,7 +23,9 @@ export type ThreadStartParams = {
   config?: { [key in string]?: JsonValue } | null;
   serviceName?: string | null;
   baseInstructions?: string | null;
-  developerInstructions?: string | null;
+  developerInstructions?: string | null; /**
+   * @deprecated `friendly` and `pragmatic` no longer select a style.
+   */
   personality?: Personality | null;
   ephemeral?: boolean | null;
   sessionStartSource?: ThreadStartSource | null; /**

@@ -16,6 +16,10 @@ export type PluginDetail = {
   shareUrl: string | null;
   description: string | null;
   skills: Array<SkillSummary>;
+  /**
+   * The declared onboarding skill, when the plugin and visible skill are enabled.
+   */
+  onboardingSkill: SkillSummary | null;
   hooks: Array<PluginHookSummary>;
   apps: Array<AppSummary>;
   appTemplates: Array<AppTemplateSummary>;

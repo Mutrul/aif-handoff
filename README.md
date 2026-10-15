@@ -89,7 +89,7 @@ docker compose restart agent
 ```
 
 Docker resolves the Codex SDK and CLI during the image build. `CODEX_VERSION`
-defaults to the reviewed `0.145.0` baseline and also accepts an npm dist-tag,
+defaults to the reviewed `0.162.1` baseline and also accepts an npm dist-tag,
 exact version, or semver range as an explicit override. When using a moving
 selector, rebuild with `docker compose build --no-cache` to force a fresh
 registry lookup. Verify the result with `docker compose exec agent codex
