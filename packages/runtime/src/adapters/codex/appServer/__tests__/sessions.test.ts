@@ -134,6 +134,21 @@ describe("codex app-server session discovery", () => {
     ]);
   });
 
+  it("renders stored images identified by URL or file ID", async () => {
+    const events = await listCodexAppServerSessionEvents({
+      runtimeId: "codex",
+      providerId: "openai",
+      profileId: "profile-1",
+      transport: RuntimeTransport.APP_SERVER,
+      sessionId: "thread-read-images",
+      options: { testScenario: "session-discovery-images" },
+    });
+
+    expect(events[0]?.message).toBe(
+      "Stored user prompt\n\n[image: https://example.com/image.png]\n\n[image: file-image-1]",
+    );
+  });
+
   it("reuses a fresh list result instead of spawning repeatedly for identical discovery input", async () => {
     const input = {
       runtimeId: "codex",

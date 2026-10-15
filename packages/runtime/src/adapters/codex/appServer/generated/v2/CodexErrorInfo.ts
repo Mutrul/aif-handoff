@@ -13,8 +13,12 @@ export type CodexErrorInfo =
   | "contextWindowExceeded"
   | "sessionBudgetExceeded"
   | "usageLimitExceeded"
+  | "rateLimitExceeded"
+  | "flexUnavailable"
   | "serverOverloaded"
   | "cyberPolicy"
+  | "misalignmentPolicyViolation"
+  | "tooManyDenials"
   | { httpConnectionFailed: { httpStatusCode: number | null } }
   | { responseStreamConnectionFailed: { httpStatusCode: number | null } }
   | "internalServerError"
@@ -25,4 +29,6 @@ export type CodexErrorInfo =
   | { responseStreamDisconnected: { httpStatusCode: number | null } }
   | { responseTooManyFailedAttempts: { httpStatusCode: number | null } }
   | { activeTurnNotSteerable: { turnKind: NonSteerableTurnKind } }
-  | "other";
+  | "other"
+  | string
+  | { [key: string]: unknown };

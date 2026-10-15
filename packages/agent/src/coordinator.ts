@@ -10,6 +10,10 @@ import {
   handoffTaskExecution,
   hasActiveLockedTaskForProject,
   claimCoordinatorTaskIfEligible,
+  isTaskAttemptRecoveryEnabled,
+  withTaskAttempt,
+  assertTaskAttemptCurrent,
+  isTaskAttemptCurrent,
   releaseTaskClaim,
   releaseStaleTaskClaims,
   updateTaskStatus as updateTaskStatusRow,
@@ -70,6 +74,7 @@ import {
 
 const log = logger("coordinator");
 const env = getEnv();
+const ATTEMPT_RECOVERY_ENABLED = isTaskAttemptRecoveryEnabled();
 const AUTO_QUEUE_COMMIT_GATE_ENABLED = env.AIF_AGENT_AUTO_QUEUE_COMMIT_GATE_ENABLED;
 const STAGE_RUN_TIMEOUT_MS = Math.max(env.AGENT_STAGE_RUN_TIMEOUT_MS, 60_000);
 const CLAIM_LOCK_DURATION_MS = STAGE_RUN_TIMEOUT_MS + 5 * 60 * 1000; // stage timeout + 5 min buffer
@@ -189,6 +194,23 @@ class StageSemaphore {
     return this.activeCount;
   }
 
+  /**
+   * Distinct project ids that currently hold at least one stage. Keys are
+   * `${projectId}:${stageLabel}`, so an overlapping poll cycle passes these to
+   * the project query to leave busy projects alone — that preserves
+   * project-local stage ordering without spending lane slots on them.
+   */
+  activeProjectIds(): string[] {
+    const projectIds = new Set<string>();
+    for (const [key, count] of this.counts) {
+      if (count <= 0) continue;
+      const separatorIndex = key.lastIndexOf(":");
+      if (separatorIndex <= 0) continue;
+      projectIds.add(key.slice(0, separatorIndex));
+    }
+    return [...projectIds];
+  }
+
   trackedKeyCount(): number {
     return this.counts.size;
   }
@@ -291,7 +313,9 @@ async function ensureCommitBeforeTerminalStatus(task: TaskRow, projectRoot: stri
     return;
   }
   try {
+    assertTaskAttemptCurrent(task.id);
     await ensureAutoQueueTaskCommit({ taskId: task.id, projectRoot });
+    assertTaskAttemptCurrent(task.id);
   } finally {
     flushActivityQueue(task.id);
   }
@@ -566,7 +590,12 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
   if (sourceStatus !== stage.inProgress) {
     clearTaskActiveRuntimeSelection(task.id);
   }
-  updateTaskStatus(task.id, stage.inProgress, {}, { title: taskTitle, fromStatus: sourceStatus });
+  updateTaskStatus(
+    task.id,
+    stage.inProgress,
+    ATTEMPT_RECOVERY_ENABLED ? { stageStartedAt: task.stageStartedAt } : {},
+    { title: taskTitle, fromStatus: sourceStatus },
+  );
 
   log.debug(
     { taskId: task.id, from: sourceStatus, to: stage.inProgress },
@@ -588,11 +617,14 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
       return false;
     }
     await runStageWithTimeout(stage.runner, task.id, executionRoot, stage.label);
+    assertTaskAttemptCurrent(task.id);
 
     flushActivityQueue(task.id);
 
     if (stage.label === "implementer") {
+      assertTaskAttemptCurrent(task.id);
       await publishGitHubTask(task.id, project.rootPath);
+      assertTaskAttemptCurrent(task.id);
       flushActivityQueue(task.id);
     }
 
@@ -621,7 +653,9 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
         taskId: task.id,
         projectRoot: task.worktreePath ?? project.rootPath,
       });
+      assertTaskAttemptCurrent(task.id);
       await publishGitHubTask(task.id, project.rootPath);
+      assertTaskAttemptCurrent(task.id);
       flushActivityQueue(task.id);
 
       if (outcome?.status === "manual_review_required") {
@@ -752,6 +786,13 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
     );
     return true;
   } catch (err) {
+    if (!isTaskAttemptCurrent(task.id)) {
+      log.info(
+        { taskId: task.id, stage: stage.label },
+        "Ignored completion from a superseded task attempt",
+      );
+      return false;
+    }
     const recovery = classifyStageError({
       taskId: task.id,
       stageLabel: stage.label,
@@ -1044,9 +1085,54 @@ export function processAutoQueueAdvance(): number {
 
 let activePollPromise: Promise<void> | null = null;
 let followUpPollRequested = false;
+let activePollCycles = 0;
 
-async function runPollCycle(): Promise<void> {
-  log.debug("Starting poll cycle");
+/**
+ * A poll cycle only settles once every stage it started has finished, and an
+ * implementer stage legitimately runs for hours. Serialising every cycle on
+ * that promise stalls the whole coordinator: housekeeping stops re-running and
+ * a task that lands in an already-passed stage waits for the longest running
+ * stage instead of the next tick. Allow a bounded number of overlapping cycles
+ * while stage slots are free — `stageSemaphore` stays the real concurrency
+ * limit, claims are atomic, and lanes revalidate candidates after acquiring a
+ * permit, so overlapping cycles cannot double-claim a task. Project-local stage
+ * order still holds: an overlapping cycle skips every project that already
+ * holds a stage (see `runPollCycle`), so only idle projects are picked up.
+ */
+const MAX_CONCURRENT_POLL_CYCLES = 8;
+
+/**
+ * Single read site for the overlapping-cycle rollout flag. `env` is the cached
+ * snapshot from `getEnv()`, so this is a property read on an already validated
+ * object rather than a re-parse.
+ *
+ * Off by default: overlapping cycles and the non-awaiting interval dispatch in
+ * `index.ts` change coordinator behaviour on the polling hot path, so both move
+ * together and only when an operator opts in. With the flag off the coordinator
+ * keeps its original single-flight loop — one cycle at a time, triggers during
+ * an active cycle coalesced into one follow-up cycle.
+ */
+export function isOverlappingPollCyclesEnabled(): boolean {
+  return env.AIF_AGENT_OVERLAPPING_POLL_CYCLES_ENABLED;
+}
+
+function canStartOverlappingPollCycle(): boolean {
+  return (
+    isOverlappingPollCyclesEnabled() &&
+    activePollCycles < MAX_CONCURRENT_POLL_CYCLES &&
+    stageSemaphore.totalActive() < env.COORDINATOR_MAX_CONCURRENT_TASKS
+  );
+}
+
+/** Number of poll cycles currently in flight (overlapping cycles included). */
+export function getActivePollCycleCount(): number {
+  return activePollCycles;
+}
+
+async function runPollCycle(
+  options: { overlapping: boolean } = { overlapping: false },
+): Promise<void> {
+  log.debug({ overlapping: options.overlapping }, "Starting poll cycle");
 
   // Release stale locks BEFORE watchdog — otherwise watchdog moves task to blocked_external
   // and the lock remains orphaned (heartbeat cleanup filters by in-progress status)
@@ -1096,9 +1182,18 @@ async function runPollCycle(): Promise<void> {
     return cached;
   }
 
-  const projectIds = listCoordinatorActionableProjectIds(maxProjectLanes);
+  // An overlapping cycle runs while an earlier cycle still drains its stages.
+  // Skipping projects that already hold a stage keeps project-local stage order
+  // intact — a planner and an implementer of the same project must never share
+  // one working tree. The skip happens inside the query: filtering a fixed
+  // window afterwards would let busy projects consume every row and hide an
+  // idle project behind them, so a free global slot would stay unused until a
+  // long stage finished. The snapshot is exact — reading it and running the
+  // query are synchronous, with no await in between for a stage to settle.
+  const excludeProjectIds = options.overlapping ? stageSemaphore.activeProjectIds() : [];
+  const projectIds = listCoordinatorActionableProjectIds(maxProjectLanes, { excludeProjectIds });
   if (projectIds.length === 0) {
-    log.debug("No actionable project lanes");
+    log.debug({ overlapping: options.overlapping }, "No actionable project lanes");
     return;
   }
 
@@ -1180,7 +1275,11 @@ async function runPollCycle(): Promise<void> {
               const taskIdToRelease =
                 claimedTask?.id ?? (claimOutcomeUncertain ? task.id : undefined);
               if (taskIdToRelease) {
-                releaseTaskClaim(taskIdToRelease, COORDINATOR_ID);
+                releaseTaskClaim(
+                  taskIdToRelease,
+                  COORDINATOR_ID,
+                  ATTEMPT_RECOVERY_ENABLED ? (claimedTask?.stageAttemptId ?? undefined) : undefined,
+                );
               }
             } catch (err) {
               log.error(
@@ -1239,7 +1338,19 @@ async function runPollCycle(): Promise<void> {
               "[FIX:149] Task revalidated and claimed for processing",
             );
 
-            const taskPromise = processOneTask(executionTask, stage)
+            const execute = () => processOneTask(executionTask, stage);
+            const execution = ATTEMPT_RECOVERY_ENABLED
+              ? withTaskAttempt(
+                  {
+                    taskId: executionTask.id,
+                    attemptId: executionTask.stageAttemptId!,
+                    coordinatorId: COORDINATOR_ID,
+                    ownershipRevision: executionTask.ownershipRevision,
+                  },
+                  execute,
+                )
+              : execute();
+            const taskPromise = execution
               .then((success) => {
                 if (!success) failedInCycle.add(executionTask.id);
               })
@@ -1293,21 +1404,34 @@ async function runPollCycle(): Promise<void> {
 }
 
 export function pollAndProcess(): Promise<void> {
-  if (activePollPromise) {
+  // With the rollout flag off, `canStartOverlappingPollCycle()` is always false
+  // and at most one cycle is ever in flight, so this is the original
+  // single-flight guard: one coalesced follow-up cycle on the active promise.
+  if (activePollCycles > 0 && !canStartOverlappingPollCycle()) {
     followUpPollRequested = true;
-    log.debug("Poll cycle already active; queued one follow-up cycle");
-    return activePollPromise;
+    log.debug(
+      { activePollCycles, activeTasks: stageSemaphore.totalActive() },
+      "Poll cycle active and no free stage slots; queued one follow-up cycle",
+    );
+    return activePollPromise ?? Promise.resolve();
   }
 
   async function drainPollRequests(): Promise<void> {
     do {
       followUpPollRequested = false;
-      await runPollCycle();
+      // This cycle counts itself, so anything above 1 means an earlier cycle is
+      // still draining its stages.
+      await runPollCycle({ overlapping: activePollCycles > 1 });
     } while (followUpPollRequested);
   }
 
-  activePollPromise = drainPollRequests().finally(() => {
-    activePollPromise = null;
+  activePollCycles += 1;
+  const cyclePromise = drainPollRequests().finally(() => {
+    activePollCycles -= 1;
+    if (activePollPromise === cyclePromise) {
+      activePollPromise = null;
+    }
   });
-  return activePollPromise;
+  activePollPromise = cyclePromise;
+  return cyclePromise;
 }

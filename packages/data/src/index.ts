@@ -1,3 +1,13 @@
+import { guardTaskAttemptWrite, isTaskAttemptRecoveryEnabled } from "./taskAttempts.js";
+export {
+  isTaskAttemptRecoveryEnabled,
+  withTaskAttempt,
+  getTaskAttempt,
+  isTaskAttemptCurrent,
+  assertTaskAttemptCurrent,
+  SupersededTaskAttemptError,
+  type TaskAttempt,
+} from "./taskAttempts.js";
 import {
   and,
   asc,
@@ -14,6 +24,7 @@ import {
   max,
   min,
   ne,
+  notInArray,
   or,
   sql,
 } from "drizzle-orm";
@@ -1493,27 +1504,29 @@ export function updateTaskPositionOnly(id: string, position: number): void {
 }
 
 export function setTaskFields(id: string, fields: TaskFieldsPatch): void {
-  const {
-    autoReviewState,
-    status: _status,
-    executionOwner: _executionOwner,
-    ownershipRevision: _ownershipRevision,
-    ...rest
-  } = fields as TaskFieldsPatch & {
-    status?: unknown;
-    executionOwner?: unknown;
-    ownershipRevision?: unknown;
-  };
-  const patch: Partial<TaskRow> & { autoReviewStateJson?: string | null } = { ...rest };
-  if (autoReviewState !== undefined) {
-    patch.autoReviewStateJson =
-      autoReviewState === null ? null : JSON.stringify(autoReviewState);
-  }
-  if (Object.keys(patch).length === 0) {
-    log.warn({ taskId: id }, "Ignored task field update with no mutable fields");
-    return;
-  }
-  getDb().update(tasks).set(patch).where(eq(tasks.id, id)).run();
+  return guardTaskAttemptWrite(id, () => {
+    const {
+      autoReviewState,
+      status: _status,
+      executionOwner: _executionOwner,
+      ownershipRevision: _ownershipRevision,
+      ...rest
+    } = fields as TaskFieldsPatch & {
+      status?: unknown;
+      executionOwner?: unknown;
+      ownershipRevision?: unknown;
+    };
+    const patch: Partial<TaskRow> & { autoReviewStateJson?: string | null } = { ...rest };
+    if (autoReviewState !== undefined) {
+      patch.autoReviewStateJson =
+        autoReviewState === null ? null : JSON.stringify(autoReviewState);
+    }
+    if (Object.keys(patch).length === 0) {
+      log.warn({ taskId: id }, "Ignored task field update with no mutable fields");
+      return;
+    }
+    getDb().update(tasks).set(patch).where(eq(tasks.id, id)).run();
+  });
 }
 
 export function persistTaskRuntimeLimitSnapshot(
@@ -1521,43 +1534,47 @@ export function persistTaskRuntimeLimitSnapshot(
   snapshot: RuntimeLimitSnapshot,
   persistedAt = new Date().toISOString(),
 ): TaskRow | undefined {
-  const normalizedSnapshot = normalizeRuntimeLimitSnapshot(snapshot);
-  log.info(
-    {
-      taskId,
-      status: normalizedSnapshot.status,
-      source: normalizedSnapshot.source,
-      precision: normalizedSnapshot.precision,
-      resetAt: normalizedSnapshot.resetAt ?? null,
-      persistedAt,
-    },
-    "Persisting task runtime limit snapshot",
-  );
-  getDb()
-    .update(tasks)
-    .set({
-      runtimeLimitSnapshotJson: serializeRuntimeLimitSnapshot(normalizedSnapshot),
-      runtimeLimitUpdatedAt: persistedAt,
-    })
-    .where(eq(tasks.id, taskId))
-    .run();
-  return findTaskById(taskId);
+  return guardTaskAttemptWrite(taskId, () => {
+    const normalizedSnapshot = normalizeRuntimeLimitSnapshot(snapshot);
+    log.info(
+      {
+        taskId,
+        status: normalizedSnapshot.status,
+        source: normalizedSnapshot.source,
+        precision: normalizedSnapshot.precision,
+        resetAt: normalizedSnapshot.resetAt ?? null,
+        persistedAt,
+      },
+      "Persisting task runtime limit snapshot",
+    );
+    getDb()
+      .update(tasks)
+      .set({
+        runtimeLimitSnapshotJson: serializeRuntimeLimitSnapshot(normalizedSnapshot),
+        runtimeLimitUpdatedAt: persistedAt,
+      })
+      .where(eq(tasks.id, taskId))
+      .run();
+    return findTaskById(taskId);
+  });
 }
 
 export function clearTaskRuntimeLimitSnapshot(
   taskId: string,
   persistedAt = new Date().toISOString(),
 ): TaskRow | undefined {
-  log.debug({ taskId, persistedAt }, "Clearing task runtime limit snapshot");
-  getDb()
-    .update(tasks)
-    .set({
-      runtimeLimitSnapshotJson: null,
-      runtimeLimitUpdatedAt: persistedAt,
-    })
-    .where(eq(tasks.id, taskId))
-    .run();
-  return findTaskById(taskId);
+  return guardTaskAttemptWrite(taskId, () => {
+    log.debug({ taskId, persistedAt }, "Clearing task runtime limit snapshot");
+    getDb()
+      .update(tasks)
+      .set({
+        runtimeLimitSnapshotJson: null,
+        runtimeLimitUpdatedAt: persistedAt,
+      })
+      .where(eq(tasks.id, taskId))
+      .run();
+    return findTaskById(taskId);
+  });
 }
 
 export function deleteTask(id: string): void {
@@ -1585,21 +1602,23 @@ export function createTaskComment(input: {
   attachments?: unknown[];
   createdAt?: string;
 }): HydratedCommentRow | undefined {
-  const id = crypto.randomUUID();
-  const createdAt = input.createdAt ?? new Date().toISOString();
-  getDb()
-    .insert(taskComments)
-    .values({
-      id,
-      taskId: input.taskId,
-      author: input.author,
-      participantId: input.participantId ?? null,
-      message: input.message,
-      attachments: JSON.stringify(input.attachments ?? []),
-      createdAt,
-    })
-    .run();
-  return findHydratedTaskComment(id);
+  return guardTaskAttemptWrite(input.taskId, () => {
+    const id = crypto.randomUUID();
+    const createdAt = input.createdAt ?? new Date().toISOString();
+    getDb()
+      .insert(taskComments)
+      .values({
+        id,
+        taskId: input.taskId,
+        author: input.author,
+        participantId: input.participantId ?? null,
+        message: input.message,
+        attachments: JSON.stringify(input.attachments ?? []),
+        createdAt,
+      })
+      .run();
+    return findHydratedTaskComment(id);
+  });
 }
 
 export function updateTaskComment(
@@ -2093,14 +2112,16 @@ export function persistTaskPlanForTask(input: {
   isFix?: boolean;
   planPath?: string;
 }): { updatedAt: string } {
-  return persistTaskPlan({
-    db: getDb(),
-    taskId: input.taskId,
-    planText: input.planText,
-    updatedAt: input.updatedAt,
-    projectRoot: input.projectRoot,
-    isFix: input.isFix,
-    planPath: input.planPath,
+  return guardTaskAttemptWrite(input.taskId, () => {
+    return persistTaskPlan({
+      db: getDb(),
+      taskId: input.taskId,
+      planText: input.planText,
+      updatedAt: input.updatedAt,
+      projectRoot: input.projectRoot,
+      isFix: input.isFix,
+      planPath: input.planPath,
+    });
   });
 }
 
@@ -2180,19 +2201,35 @@ export function findCoordinatorTaskCandidatesForProject(
     .all();
 }
 
-export function listCoordinatorActionableProjectIds(limit: number): string[] {
+/**
+ * Actionable project ids, oldest waiting task first.
+ *
+ * `excludeProjectIds` filters in SQL rather than in the caller, so `limit` is
+ * always spent on projects the caller can actually use. An overlapping poll
+ * cycle must skip projects that already hold a stage; filtering those out after
+ * the query would let busy projects consume the whole window and hide an idle
+ * project behind them, leaving a free global slot unused until a long stage
+ * finishes.
+ */
+export function listCoordinatorActionableProjectIds(
+  limit: number,
+  options: { excludeProjectIds?: readonly string[] } = {},
+): string[] {
   const nowIso = new Date().toISOString();
+  const excludeProjectIds = options.excludeProjectIds ?? [];
+  const conditions = [
+    eq(tasks.executionOwner, "ai"),
+    coordinatorAnyStageFilter(),
+    unlockedCoordinatorTaskFilter(nowIso),
+  ];
+  if (excludeProjectIds.length > 0) {
+    conditions.push(notInArray(tasks.projectId, [...excludeProjectIds]));
+  }
 
   return getDb()
     .select({ projectId: tasks.projectId })
     .from(tasks)
-    .where(
-      and(
-        eq(tasks.executionOwner, "ai"),
-        coordinatorAnyStageFilter(),
-        unlockedCoordinatorTaskFilter(nowIso),
-      ),
-    )
+    .where(and(...conditions))
     .groupBy(tasks.projectId)
     .orderBy(min(tasks.createdAt), asc(tasks.projectId))
     .limit(limit)
@@ -2244,7 +2281,18 @@ export function claimCoordinatorTaskIfEligible(
 
   return getDb()
     .update(tasks)
-    .set({ lockedBy: input.coordinatorId, lockedUntil })
+    .set({
+      lockedBy: input.coordinatorId,
+      lockedUntil,
+      ...(isTaskAttemptRecoveryEnabled()
+        ? {
+            stageAttemptId: crypto.randomUUID(),
+            stageStartedAt: nowIso,
+            lastHeartbeatAt: nowIso,
+            updatedAt: nowIso,
+          }
+        : {}),
+    })
     .where(and(...conditions))
     .returning()
     .get();
@@ -2523,17 +2571,20 @@ export function hasActiveLockedTaskForProject(projectId: string): boolean {
 
 /** Extend lock expiry for a task owned by this coordinator. */
 export function renewTaskClaim(taskId: string, coordinatorId: string, lockDurationMs: number): void {
-  const lockedUntil = new Date(Date.now() + lockDurationMs).toISOString();
-  getDb()
-    .update(tasks)
-    .set({ lockedUntil })
-    .where(and(eq(tasks.id, taskId), eq(tasks.lockedBy, coordinatorId)))
-    .run();
+  return guardTaskAttemptWrite(taskId, () => {
+    const lockedUntil = new Date(Date.now() + lockDurationMs).toISOString();
+    getDb()
+      .update(tasks)
+      .set({ lockedUntil })
+      .where(and(eq(tasks.id, taskId), eq(tasks.lockedBy, coordinatorId)))
+      .run();
+  });
 }
 
 /** Release a task claim after processing completes. */
-export function releaseTaskClaim(taskId: string, coordinatorId?: string): void {
+export function releaseTaskClaim(taskId: string, coordinatorId?: string, attemptId?: string): void {
   const conditions = [eq(tasks.id, taskId)];
+  if (attemptId != null) conditions.push(eq(tasks.stageAttemptId, attemptId));
   if (coordinatorId != null) {
     conditions.push(eq(tasks.lockedBy, coordinatorId));
   }
@@ -2696,6 +2747,7 @@ export function listStaleInProgressTasks(): TaskRow[] {
         inArray(tasks.status, ["planning", "improve", "implementing", "review", "verify"]),
         eq(tasks.executionOwner, "ai"),
         eq(tasks.paused, false),
+        isTaskAttemptRecoveryEnabled() ? isNotNull(tasks.stageStartedAt) : undefined,
         // Skip tasks with active (non-expired) locks — they're being processed
         or(
           sql`${tasks.lockedBy} IS NULL`,

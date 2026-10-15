@@ -56,7 +56,7 @@
   "devDependencies": {
     "@stryker-mutator/core": "^9.6.1",
     "@stryker-mutator/vitest-runner": "^9.6.1",
-    "@vitest/coverage-v8": "^4.1.2",
+    "@vitest/coverage-v8": "^4.1.12",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
@@ -68,10 +68,14 @@
     "typescript-eslint": "^8.57.2"
   },
   "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "^0.28.1"
+    },
     "@hono/node-server": "2.0.11",
     "body-parser": "2.3.0",
-    "fast-uri": "3.1.5",
-    "qs": "6.15.3"
+    "fast-uri": "3.1.8",
+    "ip-address": "10.7.2",
+    "qs": "6.16.0"
   },
   "packageManager": "npm@11.12.1"
 }

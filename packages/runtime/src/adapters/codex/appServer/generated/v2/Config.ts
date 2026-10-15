@@ -11,6 +11,8 @@ import type { JsonValue } from "../serde_json/JsonValue";
 import type { AnalyticsConfig } from "./AnalyticsConfig";
 import type { ApprovalsReviewer } from "./ApprovalsReviewer";
 import type { AskForApproval } from "./AskForApproval";
+import type { BrowserUseConfig } from "./BrowserUseConfig";
+import type { ComputerUseConfig } from "./ComputerUseConfig";
 import type { ForcedChatgptWorkspaceIds } from "./ForcedChatgptWorkspaceIds";
 import type { SandboxMode } from "./SandboxMode";
 import type { SandboxWorkspaceWrite } from "./SandboxWorkspaceWrite";
@@ -42,6 +44,8 @@ export type Config = {
   model_verbosity: Verbosity | null;
   service_tier: string | null;
   analytics: AnalyticsConfig | null;
+  browser_use: BrowserUseConfig | null;
+  computer_use: ComputerUseConfig | null;
   desktop: { [key in string]?: JsonValue } | null;
 } & {
   [key in string]?:

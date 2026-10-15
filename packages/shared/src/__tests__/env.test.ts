@@ -76,8 +76,10 @@ describe("env validation", () => {
     expect(result.AIF_RUNTIME_MODEL_EFFORT_DISCOVERY_ENABLED).toBe(false);
     expect(result.AIF_API_NODE_SERVER_V2_WEBSOCKET_ENABLED).toBe(false);
     expect(result.AIF_AGENT_AUTO_QUEUE_COMMIT_GATE_ENABLED).toBe(false);
+    expect(result.AIF_AGENT_ATTEMPT_RECOVERY_ENABLED).toBe(false);
     expect(result.AIF_GITHUB_PROJECT_CLONE_ENABLED).toBe(false);
     expect(result.AIF_GITHUB_ISSUE_PR_ENABLED).toBe(false);
+    expect(result.AIF_RUNTIME_ANTIGRAVITY_ENABLED).toBe(false);
     expect(result.AIF_NOTIFICATIONS_PROJECT_NAMES_ENABLED).toBe(false);
     expect(result.PARTICIPANTS_MODE_ENABLED).toBe(false);
     expect(result.PARTICIPANT_SESSION_TTL_SECONDS).toBe(7 * 24 * 60 * 60);
@@ -146,6 +148,7 @@ describe("env validation", () => {
       AIF_STAGE_RUNTIME_PIN_ENABLED: "true",
       AIF_GITHUB_PROJECT_CLONE_ENABLED: "on",
       AIF_GITHUB_ISSUE_PR_ENABLED: "yes",
+      AIF_RUNTIME_ANTIGRAVITY_ENABLED: "yes",
     });
     expect(enabled.AIF_RUNTIME_CODEX_NATIVE_SUBAGENTS_ENABLED).toBe(true);
     expect(enabled.AIF_RUNTIME_OPENCODE_LONG_RUNNING_DISPATCHER_ENABLED).toBe(true);
@@ -155,6 +158,7 @@ describe("env validation", () => {
     expect(enabled.AIF_STAGE_RUNTIME_PIN_ENABLED).toBe(true);
     expect(enabled.AIF_GITHUB_PROJECT_CLONE_ENABLED).toBe(true);
     expect(enabled.AIF_GITHUB_ISSUE_PR_ENABLED).toBe(true);
+    expect(enabled.AIF_RUNTIME_ANTIGRAVITY_ENABLED).toBe(true);
 
     const disabled = validateEnv({
       AIF_RUNTIME_CODEX_NATIVE_SUBAGENTS_ENABLED: "no",
@@ -165,6 +169,7 @@ describe("env validation", () => {
       AIF_STAGE_RUNTIME_PIN_ENABLED: "0",
       AIF_GITHUB_PROJECT_CLONE_ENABLED: "off",
       AIF_GITHUB_ISSUE_PR_ENABLED: "off",
+      AIF_RUNTIME_ANTIGRAVITY_ENABLED: "no",
     });
     expect(disabled.AIF_RUNTIME_CODEX_NATIVE_SUBAGENTS_ENABLED).toBe(false);
     expect(disabled.AIF_RUNTIME_OPENCODE_LONG_RUNNING_DISPATCHER_ENABLED).toBe(false);
@@ -174,6 +179,7 @@ describe("env validation", () => {
     expect(disabled.AIF_STAGE_RUNTIME_PIN_ENABLED).toBe(false);
     expect(disabled.AIF_GITHUB_PROJECT_CLONE_ENABLED).toBe(false);
     expect(disabled.AIF_GITHUB_ISSUE_PR_ENABLED).toBe(false);
+    expect(disabled.AIF_RUNTIME_ANTIGRAVITY_ENABLED).toBe(false);
   });
 
   it("should reject invalid stage runtime pin flag values", () => {
@@ -264,4 +270,23 @@ describe("env validation", () => {
     expect(() => getEnv()).toThrow("Environment validation failed");
     vi.unstubAllEnvs();
   });
+});
+
+it.each([
+  ["true", true],
+  ["1", true],
+  ["yes", true],
+  ["on", true],
+  ["false", false],
+  ["0", false],
+  ["no", false],
+  ["off", false],
+])("parses attempt recovery rollout %s", (value, expected) => {
+  expect(
+    validateEnv({ AIF_AGENT_ATTEMPT_RECOVERY_ENABLED: String(value) })
+      .AIF_AGENT_ATTEMPT_RECOVERY_ENABLED,
+  ).toBe(expected);
+});
+it("rejects an invalid attempt recovery rollout value", () => {
+  expect(() => validateEnv({ AIF_AGENT_ATTEMPT_RECOVERY_ENABLED: "sometimes" })).toThrow();
 });
